@@ -1,4 +1,12 @@
 import React, { createContext, useContext, useReducer, useEffect, useCallback, useRef, type ReactNode } from "react";
+import {
+  saveMusicFile,
+  getMusicFileUrl,
+  deleteMusicFile,
+  hasMusicFile,
+  cleanupOrphanedFiles,
+  getAllMusicFilesInfo,
+} from "@/lib/musicStorage";
 
 // ============ Types ============
 export interface PlantStage {
@@ -18,6 +26,13 @@ export interface MemoEntry {
   updatedAt: string;
 }
 
+export interface NoteEntry {
+  id: string;
+  content: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface HabitEntry {
   id: string;
   name: string;
@@ -29,6 +44,7 @@ export interface HabitEntry {
 export interface FocusSession {
   id: string;
   startTime: string;
+  endTime: string; // 实际结束时间
   duration: number;
   completed: boolean;
 }
@@ -46,6 +62,16 @@ export interface HeatmapDay {
   sessions: number;
 }
 
+export interface MusicTrack {
+  id: string;
+  name: string;
+  url: string; // blob URL (temporary, will be refreshed on load)
+  createdAt: string;
+  status: "valid" | "missing" | "loading"; // file availability status
+  size?: number; // file size in bytes
+  duration?: number; // 歌曲时长（秒）
+}
+
 export interface GameState {
   // Affection / Plant growth
   affection: number;
@@ -58,21 +84,43 @@ export interface GameState {
   // Pomodoro
   pomodoroMinutes: number;
   breakMinutes: number;
+  longBreakMinutes: number;
   isTimerRunning: boolean;
-  timerMode: "focus" | "break";
+  timerMode: "focus" | "break" | "longBreak";
   timeRemaining: number;
+  currentSessionCount: number; // 当前番茄组内计数（1-4）
+  skipButtonLocked: boolean; // 跳过按钮是否锁定
+  currentSessionStartTime: string | null; // 当前专注开始时间
 
   // Sound — scene-based
   activeScene: string | null;
   customMix: Record<string, number>; // soundId -> volume (0-1)
   masterVolume: number;
 
+  // Custom Music
+  musicTracks: MusicTrack[];
+  currentMusicId: string | null;
+  isMusicPlaying: boolean;
+  musicVolume: number;
+  musicRepeatMode: "none" | "all" | "one"; // 顺序播放, 列表循环, 单曲循环
+  isMusicLoading: boolean; // 音乐加载中标志
+  musicCurrentTime: number; // 当前播放时间（秒）
+  musicDuration: number; // 音乐总时长（秒）
+  musicProgress: Record<string, number>; // 每首歌的播放进度（秒）
+
   // Memos (was notes)
   memos: MemoEntry[];
   memoTags: string[];
+  showDoneMemos: boolean;
+
+  // Notes
+  notes: NoteEntry[];
 
   // Habits
   habits: HabitEntry[];
+
+  // Calendar Diary
+  diaryEntries: Record<string, string>;
 
   // Focus history
   sessions: FocusSession[];
@@ -85,6 +133,7 @@ export interface GameState {
 
   // UI
   activePanel: string | null;
+  customBackground: string | null;
 }
 
 // ============ Plant Stages ============
@@ -96,58 +145,103 @@ export const PLANT_STAGES: PlantStage[] = [
     description: "一颗充满希望的种子，等待你的专注来浇灌它。",
   },
   {
-    name: "幼苗",
+    name: "嫩芽",
     minAffection: 30,
     image: "sprout",
     description: "小小的嫩芽破土而出，你的专注正在生效！",
   },
   {
-    name: "小草",
-    minAffection: 100,
+    name: "幼苗",
+    minAffection: 120,
     image: "grass",
     description: "绿色的叶片在阳光下舒展，继续加油！",
   },
   {
     name: "灌木",
-    minAffection: 250,
+    minAffection: 480,
     image: "bush",
     description: "枝叶茂盛的小灌木，你的陪伴让它茁壮成长。",
   },
   {
     name: "小树",
-    minAffection: 500,
+    minAffection: 1920,
     image: "small_tree",
     description: "一棵挺拔的小树，它因你的坚持而充满生机。",
   },
   {
     name: "花树",
-    minAffection: 1000,
+    minAffection: 7680,
     image: "flower_tree",
-    description: "樱花盛开的大树，你们之间的羁绊已经很深了！",
+    description: "繁花盛开的大树，你们之间的羁绊已经很深了！",
   },
 ];
 
 // ============ Dialog Messages ============
 export const DIALOG_MESSAGES: DialogMessage[] = [
+  // ===== 问候语 Greetings =====
   { id: "g1", text: "欢迎回来！今天也一起加油吧～", minAffection: 0, type: "greeting" },
   { id: "g2", text: "又见面了呢，准备好开始专注了吗？", minAffection: 30, type: "greeting" },
   { id: "g3", text: "你来了！我一直在等你呢～", minAffection: 100, type: "greeting" },
   { id: "g4", text: "最喜欢和你一起度过的专注时光了！", minAffection: 250, type: "greeting" },
+  { id: "g5", text: "新的一天开始了，让我们创造美好吧！", minAffection: 0, type: "greeting" },
+  { id: "g6", text: "早安！今天也要元气满满哦～", minAffection: 0, type: "greeting" },
+  { id: "g7", text: "嗨！准备好开始今天的专注之旅了吗？", minAffection: 30, type: "greeting" },
+  { id: "g8", text: "你的到来让这里变得更加温暖了～", minAffection: 100, type: "greeting" },
+  { id: "g9", text: "每次见到你，我的叶子都会开心地摇摆！", minAffection: 250, type: "greeting" },
+  { id: "g10", text: "欢迎来到我们的小温室，今天想专注什么呢？", minAffection: 0, type: "greeting" },
+  { id: "g11", text: "呀，你来啦！我正想着你呢～", minAffection: 100, type: "greeting" },
+  { id: "g12", text: "看见你的笑容，我就觉得今天会是美好的一天！", minAffection: 250, type: "greeting" },
+  
+  // ===== 鼓励 Encouragement =====
   { id: "e1", text: "你做得很好，继续保持！", minAffection: 0, type: "encouragement" },
   { id: "e2", text: "专注的你最棒了！我在这里陪着你。", minAffection: 30, type: "encouragement" },
   { id: "e3", text: "看到你这么努力，我也充满了力量！", minAffection: 100, type: "encouragement" },
   { id: "e4", text: "有你在身边，连阳光都变得更温暖了呢。", minAffection: 250, type: "encouragement" },
   { id: "e5", text: "你的每一分钟专注，都让这个温室更加美丽。", minAffection: 500, type: "encouragement" },
+  { id: "e6", text: "深呼吸，放慢节奏，你可以做到的！", minAffection: 0, type: "encouragement" },
+  { id: "e7", text: "别忘了，即使是小进步也值得庆祝！", minAffection: 30, type: "encouragement" },
+  { id: "e8", text: "你的坚持就像阳光一样，让梦想慢慢发芽。", minAffection: 100, type: "encouragement" },
+  { id: "e9", text: "专注不是一件容易的事，但你做得很出色！", minAffection: 100, type: "encouragement" },
+  { id: "e10", text: "每一次你坐下来专注，都是对自己的一份礼物。", minAffection: 250, type: "encouragement" },
+  { id: "e11", text: "你知道吗？你的努力让周围的一切都变得更加美好。", minAffection: 250, type: "encouragement" },
+  { id: "e12", text: "不管多难的任务，只要一步一步来，总能完成的！", minAffection: 30, type: "encouragement" },
+  { id: "e13", text: "相信自己，就像我相信你一样！", minAffection: 100, type: "encouragement" },
+  { id: "e14", text: "累了就看看我，我会一直在这里为你加油！", minAffection: 250, type: "encouragement" },
+  { id: "e15", text: "你的专注时光，是我成长最好的养分～", minAffection: 500, type: "encouragement" },
+  
+  // ===== 休息 Rest =====
   { id: "r1", text: "辛苦了！休息一下，喝杯水吧。", minAffection: 0, type: "rest" },
   { id: "r2", text: "休息时间到了～伸个懒腰，看看窗外的云吧。", minAffection: 30, type: "rest" },
   { id: "r3", text: "你刚才好专注啊！现在放松一下眼睛吧。", minAffection: 100, type: "rest" },
   { id: "r4", text: "休息也是很重要的呢，我帮你泡了一杯花茶～", minAffection: 250, type: "rest" },
   { id: "r5", text: "看，因为你的努力，花又开了一朵呢！", minAffection: 500, type: "rest" },
+  { id: "r6", text: "站起来走走吧，让你的身体也舒展一下～", minAffection: 0, type: "rest" },
+  { id: "r7", text: "闭上眼睛，听一首喜欢的歌，让心情放松下来。", minAffection: 30, type: "rest" },
+  { id: "r8", text: "休息是为了走更长远的路，你做得很好！", minAffection: 100, type: "rest" },
+  { id: "r9", text: "去吃点点心吧，补充能量才能继续战斗！", minAffection: 100, type: "rest" },
+  { id: "r10", text: "深呼吸三次，感受空气流入肺部的清新感觉～", minAffection: 0, type: "rest" },
+  { id: "r11", text: "你知道吗？适当的休息能让效率提高好多倍呢！", minAffection: 250, type: "rest" },
+  { id: "r12", text: "休息时光也是成长的一部分，享受这一刻吧～", minAffection: 250, type: "rest" },
+  { id: "r13", text: "你的专注让小花开得更灿烂了，谢谢你！", minAffection: 500, type: "rest" },
+  { id: "r14", text: "休息好了吗？我随时准备陪你开始下一段专注时光！", minAffection: 100, type: "rest" },
+  { id: "r15", text: "嗯～休息时的你看起来好放松，真好～", minAffection: 250, type: "rest" },
+  
+  // ===== 里程碑 Milestone =====
   { id: "m1", text: "你的第一次专注！这颗种子因你而发芽了！", minAffection: 0, type: "milestone" },
   { id: "m2", text: "好感度提升了！小苗在向你招手呢～", minAffection: 30, type: "milestone" },
   { id: "m3", text: "连续专注真厉害！植物长大了好多！", minAffection: 100, type: "milestone" },
   { id: "m4", text: "我们的羁绊越来越深了，谢谢你一直陪着我。", minAffection: 250, type: "milestone" },
-  { id: "m5", text: "满树樱花为你绽放！你是最棒的专注伙伴！", minAffection: 1000, type: "milestone" },
+  { id: "m5", text: "满树繁花为你绽放！你是最棒的专注伙伴！", minAffection: 1000, type: "milestone" },
+  { id: "m6", text: "哇！你又进步了，我的叶子都在为你鼓掌！", minAffection: 30, type: "milestone" },
+  { id: "m7", text: "看，这就是坚持的力量！我们一起成长了好多！", minAffection: 100, type: "milestone" },
+  { id: "m8", text: "不知不觉间，我们已经一起度过了这么多专注时光～", minAffection: 250, type: "milestone" },
+  { id: "m9", text: "每一滴汗水都没有白费，看我现在长得多好！", minAffection: 100, type: "milestone" },
+  { id: "m10", text: "你的努力让这个温室充满了生机，谢谢你！", minAffection: 250, type: "milestone" },
+  { id: "m11", text: "里程碑达成！这就是坚持的力量！", minAffection: 30, type: "milestone" },
+  { id: "m12", text: "我为你感到骄傲！继续保持这份热情！", minAffection: 100, type: "milestone" },
+  { id: "m13", text: "我们的友谊和这棵树一样，越长越茂盛了～", minAffection: 500, type: "milestone" },
+  { id: "m14", text: "你是最棒的园丁，而我是最幸福的植物！", minAffection: 500, type: "milestone" },
+  { id: "m15", text: "这一刻值得纪念，谢谢你一直以来的陪伴！", minAffection: 1000, type: "milestone" },
 ];
 
 // ============ Daily Quotes ============
@@ -190,7 +284,7 @@ export const SOUND_SCENES: SoundScene[] = [
     id: "late_night_study",
     name: "深夜自习室",
     icon: "🌙",
-    description: "安静的夜晚，只有笔尖沙沙声和远处的虫鸣",
+    description: "夜深人静，书写声与虫鸣相伴",
     sounds: [
       { id: "night", volume: 0.6 },
       { id: "library", volume: 0.3 },
@@ -200,7 +294,7 @@ export const SOUND_SCENES: SoundScene[] = [
     id: "rainy_cafe",
     name: "雨天咖啡馆",
     icon: "☕",
-    description: "窗外淅淅沥沥的雨声，咖啡馆里温暖的氛围",
+    description: "窗外雨声淅沥，室内温暖宜人",
     sounds: [
       { id: "rain", volume: 0.5 },
       { id: "cafe", volume: 0.4 },
@@ -210,7 +304,7 @@ export const SOUND_SCENES: SoundScene[] = [
     id: "morning_garden",
     name: "清晨花园",
     icon: "🌸",
-    description: "鸟语花香的清晨，微风轻拂树叶",
+    description: "鸟鸣婉转，微风轻拂",
     sounds: [
       { id: "birds", volume: 0.5 },
       { id: "wind", volume: 0.3 },
@@ -220,7 +314,7 @@ export const SOUND_SCENES: SoundScene[] = [
     id: "campfire",
     name: "篝火夜话",
     icon: "🔥",
-    description: "噼啪作响的篝火，夜晚的虫鸣此起彼伏",
+    description: "篝火噼啪作响，虫鸣声声入耳",
     sounds: [
       { id: "fire", volume: 0.6 },
       { id: "night", volume: 0.3 },
@@ -230,7 +324,7 @@ export const SOUND_SCENES: SoundScene[] = [
     id: "ocean_breeze",
     name: "海边小屋",
     icon: "🌊",
-    description: "海浪拍打沙滩的声音，海风轻轻吹过",
+    description: "海浪轻拍沙滩，微风缓缓吹过",
     sounds: [
       { id: "ocean", volume: 0.6 },
       { id: "wind", volume: 0.2 },
@@ -240,7 +334,7 @@ export const SOUND_SCENES: SoundScene[] = [
     id: "thunderstorm",
     name: "暴风雨夜",
     icon: "⛈️",
-    description: "雷声隆隆，大雨倾盆，适合深度沉浸",
+    description: "雷声轰鸣，大雨倾盆而下",
     sounds: [
       { id: "thunder", volume: 0.5 },
       { id: "rain", volume: 0.5 },
@@ -260,7 +354,7 @@ export const INDIVIDUAL_SOUNDS = [
   { id: "pink", name: "粉噪音", icon: "🎶" },
   { id: "cafe", name: "咖啡馆", icon: "☕" },
   { id: "library", name: "图书馆", icon: "📚" },
-  { id: "night", name: "夜晚虫鸣", icon: "🌙" },
+  { id: "night", name: "夜虫鸣", icon: "🌙" },
 ];
 
 // ============ Actions ============
@@ -272,6 +366,9 @@ type GameAction =
   | { type: "COMPLETE_SESSION" }
   | { type: "SET_POMODORO_MINUTES"; payload: number }
   | { type: "SET_BREAK_MINUTES"; payload: number }
+  | { type: "SET_LONG_BREAK_MINUTES"; payload: number }
+  | { type: "RESET_SESSION_COUNT" }
+  | { type: "TOGGLE_SKIP_BUTTON_LOCK" }
   | { type: "SET_SCENE"; payload: string | null }
   | { type: "SET_CUSTOM_MIX"; payload: Record<string, number> }
   | { type: "SET_MASTER_VOLUME"; payload: number }
@@ -279,11 +376,32 @@ type GameAction =
   | { type: "UPDATE_MEMO"; payload: { id: string; content?: string; tag?: string; priority?: MemoEntry["priority"]; done?: boolean } }
   | { type: "DELETE_MEMO"; payload: string }
   | { type: "ADD_MEMO_TAG"; payload: string }
+  | { type: "DELETE_MEMO_TAG"; payload: string }
+  | { type: "SET_SHOW_DONE_MEMOS"; payload: boolean }
+  | { type: "ADD_NOTE"; payload: { content: string } }
+  | { type: "UPDATE_NOTE"; payload: { id: string; content: string } }
+  | { type: "DELETE_NOTE"; payload: string }
   | { type: "ADD_HABIT"; payload: { name: string } }
   | { type: "TOGGLE_HABIT"; payload: string }
   | { type: "DELETE_HABIT"; payload: string }
+  | { type: "SET_DIARY_ENTRY"; payload: { date: string; content: string } }
   | { type: "SET_ACTIVE_PANEL"; payload: string | null }
-  | { type: "LOAD_STATE"; payload: Partial<GameState> };
+  | { type: "SET_CUSTOM_BACKGROUND"; payload: string | null }
+  | { type: "LOAD_STATE"; payload: Partial<GameState> }
+  // Music actions
+  | { type: "ADD_MUSIC_TRACK"; payload: { file: File; id: string; name: string } }
+  | { type: "UPDATE_MUSIC_TRACK"; payload: { id: string; name: string } }
+  | { type: "DELETE_MUSIC_TRACK"; payload: string }
+  | { type: "REORDER_MUSIC_TRACKS"; payload: MusicTrack[] }
+  | { type: "PLAY_MUSIC"; payload: string | null }
+  | { type: "PAUSE_MUSIC" }
+  | { type: "SET_CURRENT_MUSIC"; payload: string | null } // 只设置当前音乐，不自动播放
+  | { type: "SET_MUSIC_VOLUME"; payload: number }
+  | { type: "SET_MUSIC_REPEAT_MODE"; payload: "none" | "all" | "one" }
+  | { type: "UPDATE_MUSIC_TRACK_STATUS"; payload: { id: string; status: MusicTrack["status"]; url?: string } }
+  | { type: "REUPLOAD_MUSIC_TRACK"; payload: { id: string; file: File } }
+  | { type: "SET_MUSIC_PROGRESS"; payload: { currentTime: number; duration: number } }
+  | { type: "SEEK_MUSIC"; payload: number };
 
 // ============ Initial State ============
 const initialState: GameState = {
@@ -295,15 +413,32 @@ const initialState: GameState = {
   lastSessionDate: null,
   pomodoroMinutes: 25,
   breakMinutes: 5,
+  longBreakMinutes: 15,
+  currentSessionCount: 0,
+  skipButtonLocked: true,
+  currentSessionStartTime: null,
   isTimerRunning: false,
   timerMode: "focus",
   timeRemaining: 25 * 60,
   activeScene: null,
   customMix: {},
   masterVolume: 0.5,
+  musicTracks: [],
+  currentMusicId: null,
+  isMusicPlaying: false,
+  musicVolume: 0.5,
+  musicRepeatMode: "all",
+  isMusicLoading: true,
+  musicCurrentTime: 0,
+  musicDuration: 0,
+  musicProgress: {},
   memos: [],
-  memoTags: ["学习", "灵感", "待查", "论文"],
+  memoTags: ["学习", "待查", "论文"],
+  showDoneMemos: false,
+  notes: [],
   habits: [],
+  diaryEntries: {},
+  customBackground: null,
   sessions: [],
   heatmapData: [],
   lastDialogShown: null,
@@ -319,7 +454,13 @@ function getDateStr(date: Date = new Date()): string {
 function gameReducer(state: GameState, action: GameAction): GameState {
   switch (action.type) {
     case "START_TIMER":
-      return { ...state, isTimerRunning: true };
+      // 只有在专注模式且之前没有记录开始时间时才记录
+      const shouldRecordStartTime = state.timerMode === "focus" && !state.currentSessionStartTime;
+      return { 
+        ...state, 
+        isTimerRunning: true,
+        currentSessionStartTime: shouldRecordStartTime ? new Date().toISOString() : state.currentSessionStartTime,
+      };
 
     case "PAUSE_TIMER":
       return { ...state, isTimerRunning: false };
@@ -328,9 +469,12 @@ function gameReducer(state: GameState, action: GameAction): GameState {
       return {
         ...state,
         isTimerRunning: false,
+        currentSessionStartTime: state.timerMode === "focus" ? null : state.currentSessionStartTime,
         timeRemaining: state.timerMode === "focus"
           ? state.pomodoroMinutes * 60
-          : state.breakMinutes * 60,
+          : state.timerMode === "longBreak"
+            ? state.longBreakMinutes * 60
+            : state.breakMinutes * 60,
       };
 
     case "TICK":
@@ -343,10 +487,13 @@ function gameReducer(state: GameState, action: GameAction): GameState {
         || state.lastSessionDate === today;
 
       if (state.timerMode === "focus") {
-        const affectionGain = Math.floor(state.pomodoroMinutes * 0.8);
+        // 好感度计算：x分钟贡献 floor(x/2) + 连续天数奖励 max(0, streak-1)
+        const baseAffection = Math.floor(state.pomodoroMinutes / 2);
         const newStreak = isConsecutive || state.lastSessionDate === today
           ? (state.lastSessionDate === today ? state.currentStreak : state.currentStreak + 1)
           : 1;
+        const streakBonus = Math.max(0, newStreak - 1);
+        const affectionGain = baseAffection + streakBonus;
 
         // Update heatmap
         const todayStr = getDateStr();
@@ -359,6 +506,11 @@ function gameReducer(state: GameState, action: GameAction): GameState {
             )
           : [...state.heatmapData, { date: todayStr, minutes: state.pomodoroMinutes, sessions: 1 }];
 
+        // 计算下一个番茄计数（1-4循环）
+        const nextSessionCount = state.currentSessionCount >= 3 ? 0 : state.currentSessionCount + 1;
+        // 每4个番茄后进入长休息
+        const isLongBreak = state.currentSessionCount >= 3;
+
         return {
           ...state,
           affection: state.affection + affectionGain,
@@ -367,26 +519,32 @@ function gameReducer(state: GameState, action: GameAction): GameState {
           currentStreak: newStreak,
           longestStreak: Math.max(state.longestStreak, newStreak),
           lastSessionDate: today,
-          isTimerRunning: false,
-          timerMode: "break",
-          timeRemaining: state.breakMinutes * 60,
+          currentSessionCount: nextSessionCount,
+          // 休息模式自动启动倒计时
+          isTimerRunning: true,
+          timerMode: isLongBreak ? "longBreak" : "break",
+          timeRemaining: (isLongBreak ? state.longBreakMinutes : state.breakMinutes) * 60,
           heatmapData: updatedHeatmap,
           sessions: [
             ...state.sessions,
             {
               id: Date.now().toString(),
-              startTime: new Date().toISOString(),
+              startTime: state.currentSessionStartTime || new Date().toISOString(),
+              endTime: new Date().toISOString(),
               duration: state.pomodoroMinutes,
               completed: true,
             },
           ],
+          currentSessionStartTime: null, // 重置开始时间
         };
       } else {
+        // 休息结束，回到专注模式
         return {
           ...state,
           isTimerRunning: false,
           timerMode: "focus",
           timeRemaining: state.pomodoroMinutes * 60,
+          currentSessionStartTime: null, // 重置开始时间
         };
       }
     }
@@ -407,6 +565,27 @@ function gameReducer(state: GameState, action: GameAction): GameState {
         timeRemaining: state.timerMode === "break" && !state.isTimerRunning
           ? action.payload * 60
           : state.timeRemaining,
+      };
+
+    case "SET_LONG_BREAK_MINUTES":
+      return {
+        ...state,
+        longBreakMinutes: action.payload,
+        timeRemaining: state.timerMode === "longBreak" && !state.isTimerRunning
+          ? action.payload * 60
+          : state.timeRemaining,
+      };
+
+    case "RESET_SESSION_COUNT":
+      return {
+        ...state,
+        currentSessionCount: 0,
+      };
+
+    case "TOGGLE_SKIP_BUTTON_LOCK":
+      return {
+        ...state,
+        skipButtonLocked: !state.skipButtonLocked,
       };
 
     case "SET_SCENE": {
@@ -471,6 +650,12 @@ function gameReducer(state: GameState, action: GameAction): GameState {
       if (state.memoTags.includes(action.payload)) return state;
       return { ...state, memoTags: [...state.memoTags, action.payload] };
 
+    case "DELETE_MEMO_TAG":
+      return { ...state, memoTags: state.memoTags.filter((tag) => tag !== action.payload) };
+
+    case "SET_SHOW_DONE_MEMOS":
+      return { ...state, showDoneMemos: action.payload };
+
     case "ADD_HABIT":
       return {
         ...state,
@@ -486,7 +671,15 @@ function gameReducer(state: GameState, action: GameAction): GameState {
         ...state,
         habits: state.habits.map((h) => {
           if (h.id !== action.payload) return h;
-          if (h.completed) return { ...h, completed: false };
+          if (h.completed) {
+            // 取消勾选：重置 streak（减1，最小为0），清空最后完成时间
+            return { 
+              ...h, 
+              completed: false, 
+              streak: Math.max(0, h.streak - 1),
+              lastCompleted: null 
+            };
+          }
           const isConsecutive = h.lastCompleted === new Date(Date.now() - 86400000).toDateString();
           return {
             ...h,
@@ -501,11 +694,184 @@ function gameReducer(state: GameState, action: GameAction): GameState {
     case "DELETE_HABIT":
       return { ...state, habits: state.habits.filter((h) => h.id !== action.payload) };
 
+    case "ADD_NOTE": {
+      const now = new Date().toISOString();
+      return {
+        ...state,
+        notes: [
+          { id: Date.now().toString(), content: action.payload.content, createdAt: now, updatedAt: now },
+          ...state.notes,
+        ],
+      };
+    }
+
+    case "UPDATE_NOTE":
+      return {
+        ...state,
+        notes: state.notes.map((note) =>
+          note.id === action.payload.id
+            ? { ...note, content: action.payload.content, updatedAt: new Date().toISOString() }
+            : note
+        ),
+      };
+
+    case "DELETE_NOTE":
+      return { ...state, notes: state.notes.filter((note) => note.id !== action.payload) };
+
+    case "SET_DIARY_ENTRY":
+      return {
+        ...state,
+        diaryEntries: {
+          ...state.diaryEntries,
+          [action.payload.date]: action.payload.content,
+        },
+      };
+
+    case "SET_CUSTOM_BACKGROUND":
+      return { ...state, customBackground: action.payload };
+
     case "SET_ACTIVE_PANEL":
       return { ...state, activePanel: state.activePanel === action.payload ? null : action.payload };
 
+    // Music actions
+    case "ADD_MUSIC_TRACK": {
+      // Save to IndexedDB is handled by the component/hook
+      const url = URL.createObjectURL(action.payload.file);
+      const newTrack: MusicTrack = {
+        id: action.payload.id,
+        name: action.payload.name,
+        url,
+        createdAt: new Date().toISOString(),
+        status: "valid",
+        size: action.payload.file.size,
+      };
+      return { ...state, musicTracks: [...state.musicTracks, newTrack] };
+    }
+
+    case "UPDATE_MUSIC_TRACK":
+      return {
+        ...state,
+        musicTracks: state.musicTracks.map((t) =>
+          t.id === action.payload.id ? { ...t, name: action.payload.name } : t
+        ),
+      };
+
+    case "DELETE_MUSIC_TRACK": {
+      const isCurrent = state.currentMusicId === action.payload;
+      // Delete from IndexedDB is handled by the component
+      return {
+        ...state,
+        musicTracks: state.musicTracks.filter((t) => t.id !== action.payload),
+        currentMusicId: isCurrent ? null : state.currentMusicId,
+        isMusicPlaying: isCurrent ? false : state.isMusicPlaying,
+      };
+    }
+
+    case "UPDATE_MUSIC_TRACK_STATUS":
+      return {
+        ...state,
+        musicTracks: state.musicTracks.map((t) =>
+          t.id === action.payload.id
+            ? {
+                ...t,
+                status: action.payload.status,
+                ...(action.payload.url && { url: action.payload.url }),
+              }
+            : t
+        ),
+      };
+
+    case "REUPLOAD_MUSIC_TRACK": {
+      // This is handled by the component, reducer just updates the status
+      return {
+        ...state,
+        musicTracks: state.musicTracks.map((t) =>
+          t.id === action.payload.id ? { ...t, status: "loading" } : t
+        ),
+      };
+    }
+
+    case "SET_MUSIC_PROGRESS": {
+      const newProgress = {
+        ...state.musicProgress,
+        ...(state.currentMusicId && {
+          [state.currentMusicId]: action.payload.currentTime,
+        }),
+      };
+      // 同时更新当前歌曲的 duration
+      const currentTrack = state.currentMusicId
+        ? state.musicTracks.find((t) => t.id === state.currentMusicId)
+        : null;
+      const newTracks = currentTrack
+        ? state.musicTracks.map((t) =>
+            t.id === state.currentMusicId
+              ? { ...t, duration: action.payload.duration }
+              : t
+          )
+        : state.musicTracks;
+      
+      return {
+        ...state,
+        musicCurrentTime: action.payload.currentTime,
+        musicDuration: action.payload.duration,
+        musicProgress: newProgress,
+        musicTracks: newTracks,
+      };
+    }
+
+    case "SEEK_MUSIC":
+      return {
+        ...state,
+        musicCurrentTime: action.payload,
+      };
+
+    case "REORDER_MUSIC_TRACKS":
+      return { ...state, musicTracks: action.payload };
+
+    case "PLAY_MUSIC": {
+      const newTrackId = action.payload;
+      
+      // 保存当前歌曲的进度（如果有）
+      const newProgress = state.currentMusicId
+        ? { ...state.musicProgress, [state.currentMusicId]: state.musicCurrentTime }
+        : { ...state.musicProgress };
+      
+      // 获取新歌曲的保存进度
+      const savedProgress = newTrackId ? (newProgress[newTrackId] || 0) : 0;
+      
+      return {
+        ...state,
+        currentMusicId: newTrackId,
+        isMusicPlaying: newTrackId !== null,
+        musicCurrentTime: savedProgress,
+        musicProgress: newProgress,
+      };
+    }
+
+    case "PAUSE_MUSIC": {
+      // 暂停时保存当前进度到 musicProgress
+      const newProgress = state.currentMusicId
+        ? { ...state.musicProgress, [state.currentMusicId]: state.musicCurrentTime }
+        : { ...state.musicProgress };
+      
+      return { 
+        ...state, 
+        isMusicPlaying: false,
+        musicProgress: newProgress,
+      };
+    }
+
+    case "SET_CURRENT_MUSIC":
+      return { ...state, currentMusicId: action.payload };
+
+    case "SET_MUSIC_VOLUME":
+      return { ...state, musicVolume: action.payload };
+
+    case "SET_MUSIC_REPEAT_MODE":
+      return { ...state, musicRepeatMode: action.payload };
+
     case "LOAD_STATE":
-      return { ...state, ...action.payload };
+      return { ...state, ...action.payload, isMusicLoading: false };
 
     default:
       return state;
@@ -527,35 +893,154 @@ const GameContext = createContext<GameContextType | null>(null);
 export function GameProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(gameReducer, initialState);
 
-  // Load saved state
+  // Load saved state and validate music files
   useEffect(() => {
-    try {
-      const saved = localStorage.getItem("focus-companion-state");
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        dispatch({
-          type: "LOAD_STATE",
-          payload: {
-            ...parsed,
-            isTimerRunning: false,
-            timeRemaining: parsed.timerMode === "focus"
-              ? (parsed.pomodoroMinutes || 25) * 60
-              : (parsed.breakMinutes || 5) * 60,
-          },
-        });
+    const loadState = async () => {
+      try {
+        const saved = localStorage.getItem("focus-companion-state");
+        // 同时读取 last-audio，因为它保存得更及时（主状态有 500ms 延迟）
+        const lastAudioRaw = localStorage.getItem("focus-companion-last-audio");
+        const lastAudio = lastAudioRaw ? JSON.parse(lastAudioRaw) : null;
+        
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          
+          // 优先使用 last-audio 中的 currentMusicId（因为它保存得更及时）
+          if (lastAudio?.currentMusicId) {
+            parsed.currentMusicId = lastAudio.currentMusicId;
+          }
+          if (lastAudio?.musicProgress) {
+            parsed.musicProgress = { ...parsed.musicProgress, ...lastAudio.musicProgress };
+          }
+          
+          // Validate and refresh music file URLs from IndexedDB
+          let validatedTracks: MusicTrack[] = [];
+          
+          if (parsed.musicTracks && Array.isArray(parsed.musicTracks) && parsed.musicTracks.length > 0) {
+            // Retry logic for IndexedDB validation (handles fresh page loads)
+            let retryCount = 0;
+            const maxRetries = 3;
+            
+            while (retryCount < maxRetries) {
+              const allDbFiles = await getAllMusicFilesInfo();
+              
+              // If we found files in IndexedDB, proceed with validation
+              if (allDbFiles.length > 0 || retryCount === maxRetries - 1) {
+                // Validate tracks sequentially to avoid IndexedDB contention
+                validatedTracks = [];
+                for (const track of parsed.musicTracks) {
+                  try {
+                    const hasFile = await hasMusicFile(track.id);
+                    
+                    if (hasFile) {
+                      const newUrl = await getMusicFileUrl(track.id);
+                      
+                      if (newUrl) {
+                        validatedTracks.push({
+                          ...track,
+                          url: newUrl,
+                          status: "valid" as const,
+                        });
+                        continue;
+                      }
+                    }
+                    // File not in IndexedDB, mark as missing
+                    validatedTracks.push({
+                      ...track,
+                      status: "missing" as const,
+                    });
+                  } catch {
+                    validatedTracks.push({
+                      ...track,
+                      status: "missing" as const,
+                    });
+                  }
+                }
+                break; // Successfully validated, exit retry loop
+              } else {
+                // IndexedDB appears empty, wait and retry
+                retryCount++;
+                if (retryCount < maxRetries) {
+                  await new Promise(r => setTimeout(r, 200 * retryCount));
+                }
+              }
+            }
+            
+            // Cleanup orphaned files - disabled to prevent accidental deletion
+            const validIds = validatedTracks
+              .filter((t) => t.status === "valid")
+              .map((t) => t.id);
+            await cleanupOrphanedFiles(validIds);
+          }
+          
+          // 恢复计时器状态：保留剩余时间，但暂停计时
+          const savedTimeRemaining = parsed.timeRemaining;
+          const totalTime = parsed.timerMode === "focus"
+            ? (parsed.pomodoroMinutes || 25) * 60
+            : parsed.timerMode === "longBreak"
+              ? (parsed.longBreakMinutes || 15) * 60
+              : (parsed.breakMinutes || 5) * 60;
+          
+          // 确保剩余时间有效（在 0 到总时长之间）
+          const validTimeRemaining = savedTimeRemaining > 0 && savedTimeRemaining <= totalTime
+            ? savedTimeRemaining
+            : totalTime;
+          
+          // 刷新后默认清空场景和混音（需要用户点击"恢复上次"才恢复）
+          // 但保留音乐选中状态和进度
+          
+          // 关键：确保 musicCurrentTime 对应选中的歌曲
+          // 同时验证选中的音乐是否还存在（可能被删除了）
+          const savedMusicId = parsed.currentMusicId;
+          const savedMusicProgress = parsed.musicProgress || {};
+          
+          // 检查选中的音乐是否还有效
+          const selectedTrack = savedMusicId 
+            ? validatedTracks.find((t: MusicTrack) => t.id === savedMusicId)
+            : null;
+          const validMusicId = selectedTrack?.status === "valid" ? savedMusicId : null;
+          
+          // 只有有效的音乐才恢复进度，否则重置为0
+          const correctCurrentTime = validMusicId 
+            ? (savedMusicProgress[validMusicId] || 0)
+            : 0;
+          
+          dispatch({
+            type: "LOAD_STATE",
+            payload: {
+              ...parsed,
+              musicTracks: validatedTracks,
+              isTimerRunning: false,
+              timeRemaining: validTimeRemaining,
+              // 清空场景和混音
+              activeScene: null,
+              customMix: {},
+              // 音乐：保留有效选中歌曲，暂停播放；如果歌曲已被删除则清空
+              currentMusicId: validMusicId,
+              isMusicPlaying: false,
+              // 关键：使用选中歌曲的保存进度
+              musicCurrentTime: correctCurrentTime,
+            },
+          });
+        } else {
+          // No saved state, set loading to false
+          dispatch({ type: "LOAD_STATE", payload: { isMusicLoading: false } });
+        }
+      } catch (e) {
+        console.error("Failed to load saved state:", e);
+        dispatch({ type: "LOAD_STATE", payload: { isMusicLoading: false } });
       }
-    } catch (e) {
-      console.warn("Failed to load saved state:", e);
-    }
+    };
+    
+    loadState();
   }, []);
 
-  // Save state (debounced)
+  // 保存主状态（debounced 500ms）
   useEffect(() => {
     const timeout = setTimeout(() => {
       try {
-        const { isTimerRunning, timeRemaining, activePanel, ...saveable } = state;
+        const { isTimerRunning, activePanel, ...saveable } = state;
         void isTimerRunning;
-        void timeRemaining;
         void activePanel;
         localStorage.setItem("focus-companion-state", JSON.stringify(saveable));
       } catch (e) {
@@ -564,6 +1049,47 @@ export function GameProvider({ children }: { children: ReactNode }) {
     }, 500);
     return () => clearTimeout(timeout);
   }, [state]);
+  
+  // 音频状态立即保存（无延迟，防止刷新丢失）
+  // 只要有选中歌曲或正在播放音频就保存
+  useEffect(() => {
+    try {
+      const hasAudioActivity = state.activeScene !== null || 
+        Object.values(state.customMix).some((v) => v > 0) ||
+        state.currentMusicId !== null;
+      
+      if (hasAudioActivity) {
+        const audioState = {
+          activeScene: state.activeScene,
+          customMix: state.customMix,
+          masterVolume: state.masterVolume,
+          currentMusicId: state.currentMusicId,
+          musicVolume: state.musicVolume,
+          musicRepeatMode: state.musicRepeatMode,
+          musicProgress: state.musicProgress,
+          isMusicPlaying: state.isMusicPlaying,
+        };
+        localStorage.setItem("focus-companion-last-audio", JSON.stringify(audioState));
+      }
+    } catch (e) {
+      console.warn("Failed to save audio state:", e);
+    }
+  }, [state.activeScene, state.customMix, state.masterVolume, state.currentMusicId, state.musicVolume, state.musicRepeatMode, state.musicProgress, state.isMusicPlaying]);
+  
+  // 音乐进度变化时立即保存到主 storage（无延迟）
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem("focus-companion-state");
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        parsed.musicProgress = state.musicProgress;
+        parsed.musicCurrentTime = state.musicCurrentTime;
+        localStorage.setItem("focus-companion-state", JSON.stringify(parsed));
+      }
+    } catch (e) {
+      console.warn("Failed to save music progress:", e);
+    }
+  }, [state.musicProgress, state.musicCurrentTime]);
 
   // Reset habits daily - 使用 ref 防止重复执行
   const hasResetTodayRef = useRef(false);

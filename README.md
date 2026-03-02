@@ -1,7 +1,3 @@
-注：pnpm 都改成 npm
-
-
-
 # Focus Companion（专注陪伴）
 
 一个本地优先的专注陪伴应用，包含番茄钟、环境音效、植物成长、笔记、习惯追踪和学习统计。前端使用 React + Vite，数据默认保存在浏览器 `localStorage`。
@@ -52,7 +48,7 @@ scripts\dev-local.bat
 bash scripts/dev-local.sh
 ```
 
-脚本会自动安装依赖并启动开发服务器，且会自动打开浏览器。
+脚本会自动检查 npm 是否安装，安装依赖并启动开发服务器，且会自动打开浏览器。
 
 ## 本地浏览效果（生产模式预览）
 
@@ -66,34 +62,25 @@ scripts\preview-local.bat
 bash scripts/preview-local.sh
 ```
 
-脚本会自动执行构建并启动本地生产服务，浏览器访问 `http://localhost:3000`。
+脚本会自动检查 npm 是否安装，执行构建并启动本地生产服务，浏览器访问 `http://localhost:3000`。
 
 ## 本地部署指南
 
 ### 1) 环境要求
 
 - Node.js 22 或更高版本
-- pnpm 10 或更高版本
-
-建议先检查版本：
-
-```bash
-node -v
-pnpm -v
-```
-
 ### 2) 安装依赖
 
 在项目根目录执行：
 
 ```bash
-pnpm install
+npm install
 ```
 
 ### 3) 启动开发环境
 
 ```bash
-pnpm dev
+npm run dev
 ```
 
 默认会启动 Vite 开发服务器（通常为 `http://localhost:3000`，如果端口占用会自动尝试下一个可用端口）。
@@ -101,13 +88,13 @@ pnpm dev
 ### 4) 类型检查
 
 ```bash
-pnpm check
+npm run check
 ```
 
 ### 5) 构建生产版本
 
 ```bash
-pnpm build
+npm run build
 ```
 
 构建产物会输出到：
@@ -118,13 +105,17 @@ pnpm build
 ### 6) 启动生产服务（本地）
 
 ```bash
-pnpm start
+npm start
 ```
 
 默认监听 `3000` 端口。可通过环境变量指定端口：
 
 ```bash
-PORT=8080 pnpm start
+# Windows
+set PORT=8080 && npm start
+
+# macOS/Linux
+PORT=8080 npm start
 ```
 
 ## 数据存储说明

@@ -132,7 +132,7 @@ export default function Heatmap() {
                     ${cell.isFuture ? "bg-transparent" : INTENSITY_COLORS[cell.intensity]}
                     ${cell.isToday ? "ring-1 ring-primary/50" : ""}
                   `}
-                  title={cell.isFuture ? "未来日期" : `${cell.date}: ${cell.minutes > 0 ? cell.minutes + '分钟专注' : '无记录'}`}
+                  data-tooltip={cell.isFuture ? "未来日期" : `${cell.date}: ${cell.minutes > 0 ? cell.minutes + '分钟专注' : '无记录'}`}
                 />
               ))}
             </div>

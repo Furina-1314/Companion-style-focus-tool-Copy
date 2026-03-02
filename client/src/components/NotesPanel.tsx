@@ -1,242 +1,311 @@
 import { useGame, type MemoEntry } from "@/contexts/GameContext";
-import { useState } from "react";
-import { motion, AnimatePresence } from "motion/react";
-import { Plus, Trash2, Lightbulb, Check, ChevronDown, Tag, AlertCircle } from "lucide-react";
+import { useState, useEffect, useRef } from "react";
+import { useDeleteConfirm } from "@/hooks/useDeleteConfirm";
+import { Plus, Trash2, Lightbulb, Check, Edit2, Search, X, Tag } from "lucide-react";
 
 const PRIORITY_CONFIG = {
-  low: { label: "低", color: "text-blue-400", bg: "bg-blue-400/15" },
-  medium: { label: "中", color: "text-amber-500", bg: "bg-amber-400/15" },
-  high: { label: "高", color: "text-red-400", bg: "bg-red-400/15" },
+  low: { label: "低", color: "text-blue-600", bg: "bg-blue-100", border: "border-blue-300", icon: "🔵" },
+  medium: { label: "中", color: "text-amber-600", bg: "bg-amber-100", border: "border-amber-300", icon: "🟡" },
+  high: { label: "高", color: "text-red-600", bg: "bg-red-100", border: "border-red-300", icon: "🔴" },
 };
+
+const PRIORITY_ORDER = { high: 0, medium: 1, low: 2 };
 
 export default function NotesPanel() {
   const { state, dispatch } = useGame();
   const [newContent, setNewContent] = useState("");
-  const [newTag, setNewTag] = useState(state.memoTags[0] || "学习");
+  const [newTag, setNewTag] = useState<string>("");
   const [newPriority, setNewPriority] = useState<MemoEntry["priority"]>("medium");
   const [isAdding, setIsAdding] = useState(false);
   const [filterTag, setFilterTag] = useState<string | null>(null);
-  const [showDone, setShowDone] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editContent, setEditContent] = useState("");
+  const [editTag, setEditTag] = useState<string>("");
+  const [editPriority, setEditPriority] = useState<MemoEntry["priority"]>("medium");
   const [newTagInput, setNewTagInput] = useState("");
   const [showNewTag, setShowNewTag] = useState(false);
+  const newTagRef = useRef<HTMLDivElement>(null);
+
+  // 新建时，根据当前筛选自动设置默认标签
+  useEffect(() => {
+    if (isAdding) {
+      setNewTag(filterTag && filterTag !== "" ? filterTag : "");
+    }
+  }, [filterTag, isAdding]);
+
+  // 点击外部取消新建标签
+  useEffect(() => {
+    if (!showNewTag) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (newTagRef.current && !newTagRef.current.contains(e.target as Node)) {
+        setShowNewTag(false);
+        setNewTagInput("");
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [showNewTag]);
 
   const handleAdd = () => {
     if (!newContent.trim()) return;
-    dispatch({
-      type: "ADD_MEMO",
-      payload: { content: newContent.trim(), tag: newTag, priority: newPriority },
-    });
+    dispatch({ type: "ADD_MEMO", payload: { content: newContent.trim(), tag: newTag, priority: newPriority } });
     setNewContent("");
+    setNewTag("");
     setIsAdding(false);
   };
 
-  const filteredMemos = state.memos.filter((m) => {
-    if (!showDone && m.done) return false;
-    if (filterTag && m.tag !== filterTag) return false;
-    return true;
-  });
+  const handleAddTag = () => {
+    if (!newTagInput.trim()) return;
+    dispatch({ type: "ADD_MEMO_TAG", payload: newTagInput.trim() });
+    setNewTag(newTagInput.trim());
+    setNewTagInput("");
+    setShowNewTag(false);
+  };
+
+  const handleDeleteTag = (tagToDelete: string) => {
+    // 不能删除"无标签"系统标签
+    if (tagToDelete === "无标签") return;
+    dispatch({ type: "DELETE_MEMO_TAG", payload: tagToDelete });
+    // 如果删除的是当前筛选标签，重置筛选
+    if (filterTag === tagToDelete) setFilterTag(null);
+    // 如果删除的是当前选中标签，清空选择
+    if (newTag === tagToDelete) {
+      setNewTag("");
+    }
+  };
+
+  const handleStartEdit = (memo: MemoEntry) => {
+    setEditingId(memo.id);
+    setEditContent(memo.content);
+    setEditTag(memo.tag);
+    setEditPriority(memo.priority);
+  };
+
+  const handleSaveEdit = () => {
+    if (!editingId || !editContent.trim()) return;
+    dispatch({ 
+      type: "UPDATE_MEMO", 
+      payload: { id: editingId, content: editContent.trim(), tag: editTag, priority: editPriority } 
+    });
+    setEditingId(null);
+    setEditContent("");
+    setEditTag("");
+    setEditPriority("medium");
+  };
+
+  const handleCancelEdit = () => {
+    setEditingId(null);
+    setEditContent("");
+    setEditTag("");
+    setEditPriority("medium");
+  };
+
+  // 过滤并排序：优先级红>黄>蓝，同优先级按时间早的在前
+  const filteredMemos = state.memos
+    .filter((m) => {
+      if (!state.showDoneMemos && m.done) return false;
+      // filterTag === null: 全部, filterTag === "": 无标签, filterTag === "xxx": 特定标签
+      if (filterTag !== null && m.tag !== filterTag) return false;
+      if (searchQuery && !m.content.toLowerCase().includes(searchQuery.toLowerCase())) return false;
+      return true;
+    })
+    .sort((a, b) => {
+      // 先按优先级排序
+      const priorityDiff = PRIORITY_ORDER[a.priority] - PRIORITY_ORDER[b.priority];
+      if (priorityDiff !== 0) return priorityDiff;
+      // 同优先级按时间排序（早的在前）
+      return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+    });
 
   const pendingCount = state.memos.filter((m) => !m.done).length;
 
+  // 删除确认
+  const { requestDelete, confirmDelete, cancelDelete, isConfirming } = useDeleteConfirm({
+    onDelete: (id) => dispatch({ type: "DELETE_MEMO", payload: id }),
+    confirmText: "确定删除这个待办？",
+  });
+
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ delay: 0.2 }}
-      className="glass-strong rounded-2xl p-4 flex flex-col"
-      style={{ maxHeight: "420px" }}
-    >
-      <div className="flex items-center gap-2 mb-2">
-        <Lightbulb size={15} className="text-amber-400" />
-        <h3 className="text-sm font-semibold" style={{ fontFamily: "var(--font-display)" }}>
-          灵感备忘
-        </h3>
-        <span className="text-[9px] text-muted-foreground ml-auto">
-          {pendingCount} 条待处理
-        </span>
-      </div>
-<div className="flex gap-1 mb-2 flex-wrap">
-        <button
-          onClick={() => setFilterTag(null)}
-          className={`px-2 py-0.5 rounded-md text-[9px] font-medium transition-all
-            ${!filterTag ? "bg-primary/15 text-primary" : "text-muted-foreground hover:bg-white/15"}`}
-        >
-          全部
-        </button>
-        {state.memoTags.map((tag) => (
-          <button
-            key={tag}
-            onClick={() => setFilterTag(filterTag === tag ? null : tag)}
-            className={`px-2 py-0.5 rounded-md text-[9px] font-medium transition-all
-              ${filterTag === tag ? "bg-primary/15 text-primary" : "text-muted-foreground hover:bg-white/15"}`}
+    <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-4 shadow-lg h-full flex flex-col">
+      {/* 头部 */}
+      <div className="flex items-center justify-between mb-3 shrink-0">
+        <div className="flex items-center gap-2">
+          <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-amber-400 to-orange-400 flex items-center justify-center">
+            <Lightbulb size={16} className="text-white" />
+          </div>
+          <div>
+            <h3 className="text-sm font-semibold text-gray-800">待办</h3>
+            <p className="text-[10px] text-gray-500">{pendingCount} 条待处理</p>
+          </div>
+        </div>
+        <div className="flex gap-1">
+          <button 
+            onClick={() => dispatch({ type: "SET_SHOW_DONE_MEMOS", payload: !state.showDoneMemos })} 
+            className={`px-3 py-1 rounded-xl transition-colors whitespace-nowrap text-[11px] font-medium h-6 flex items-center ${state.showDoneMemos ? "bg-green-100 text-green-600" : "bg-gray-100 text-gray-500 hover:bg-gray-200"}`}
           >
-            {tag}
+            {state.showDoneMemos ? "隐藏已完成" : "显示已完成"}
           </button>
-        ))}
-        <button
-          onClick={() => setShowDone(!showDone)}
-          className={`px-2 py-0.5 rounded-md text-[9px] font-medium transition-all
-            ${showDone ? "bg-green-400/15 text-green-600" : "text-muted-foreground hover:bg-white/15"}`}
-        >
-          {showDone ? "隐藏已完成" : "显示已完成"}
-        </button>
+          <button onClick={() => setIsAdding(true)} className="px-2 py-1 rounded-full text-[11px] bg-amber-100 text-amber-600 hover:bg-amber-200 leading-none h-6">+</button>
+        </div>
       </div>
-<AnimatePresence>
-        {isAdding ? (
-          <motion.div
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: "auto" }}
-            exit={{ opacity: 0, height: 0 }}
-            className="mb-2 overflow-hidden"
-          >
-            <textarea
-              value={newContent}
-              onChange={(e) => setNewContent(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleAdd(); }
-                if (e.key === "Escape") setIsAdding(false);
-              }}
-              placeholder="记录灵感、待查资料、学习笔记..."
-              rows={2}
-              autoFocus
-              className="w-full bg-white/15 rounded-xl px-3 py-2 text-xs resize-none
-                         placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1
-                         focus:ring-primary/30 transition-all mb-1.5"
+
+      {/* 搜索 */}
+      <div className="relative mb-3 shrink-0">
+        <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+        <input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="搜索待办..."
+          className="w-full bg-gray-100 rounded-xl pl-9 pr-3 py-2 text-sm placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-amber-300" />
+      </div>
+
+      {/* 标签过滤 */}
+      <div className="flex flex-wrap gap-1.5 mb-3 shrink-0 items-center">
+        {/* 全部 - 用占位符保持高度一致 */}
+        <div className="relative h-6">
+          <button onClick={() => setFilterTag(null)} className={`px-2.5 py-1 rounded-full text-[11px] font-medium transition-all leading-none h-full ${filterTag === null ? "bg-amber-500 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}>
+            全部
+          </button>
+        </div>
+        {/* 无标签 - 用占位符保持高度一致 */}
+        <div className="relative h-6">
+          <button onClick={() => setFilterTag("")} className={`px-2.5 py-1 rounded-full text-[11px] font-medium transition-all leading-none h-full ${filterTag === "" ? "bg-amber-500 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}>
+            无标签
+          </button>
+        </div>
+        {state.memoTags.filter(t => t !== "无标签").map((tag) => (
+          <div key={tag} className="relative group h-6">
+            <button onClick={() => setFilterTag(filterTag === tag ? null : tag)} className={`px-2.5 py-1 rounded-full text-[11px] font-medium transition-all leading-none h-6 ${filterTag === tag ? "bg-amber-500 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}>
+              {tag}
+            </button>
+            {/* 删除标签按钮 */}
+            <button onClick={() => handleDeleteTag(tag)} className="absolute -top-1 -right-1 w-4 h-4 bg-red-400 text-white rounded-full text-[8px] opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+              ×
+            </button>
+          </div>
+        ))}
+        {/* 添加新标签 */}
+        {showNewTag ? (
+          <div ref={newTagRef} className="flex gap-1 items-center h-6">
+            <input 
+              type="text" 
+              value={newTagInput} 
+              onChange={(e) => setNewTagInput(e.target.value)} 
+              onKeyDown={(e) => { if (e.key === "Enter") handleAddTag(); if (e.key === "Escape") { setShowNewTag(false); setNewTagInput(""); } }} 
+              placeholder="新标签" 
+              autoFocus 
+              className="w-16 px-2 py-1 rounded-full text-[11px] bg-gray-100 focus:outline-none focus:ring-2 focus:ring-amber-300 leading-none h-full" 
             />
-            <div className="flex items-center gap-1.5">
-<div className="relative">
-                <select
-                  value={newTag}
-                  onChange={(e) => setNewTag(e.target.value)}
-                  className="appearance-none bg-white/15 rounded-lg px-2 py-1 text-[10px] pr-5
-                             focus:outline-none focus:ring-1 focus:ring-primary/30"
-                >
-                  {state.memoTags.map((t) => (
-                    <option key={t} value={t}>{t}</option>
-                  ))}
-                </select>
-                <ChevronDown size={8} className="absolute right-1.5 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
-              </div>
-{showNewTag ? (
-                <input
-                  value={newTagInput}
-                  onChange={(e) => setNewTagInput(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && newTagInput.trim()) {
-                      dispatch({ type: "ADD_MEMO_TAG", payload: newTagInput.trim() });
-                      setNewTag(newTagInput.trim());
-                      setNewTagInput("");
-                      setShowNewTag(false);
-                    }
-                    if (e.key === "Escape") setShowNewTag(false);
-                  }}
-                  placeholder="新标签"
-                  autoFocus
-                  className="w-16 bg-white/15 rounded-lg px-2 py-1 text-[10px]
-                             focus:outline-none focus:ring-1 focus:ring-primary/30"
-                />
-              ) : (
-                <button
-                  onClick={() => setShowNewTag(true)}
-                  className="p-1 rounded-lg hover:bg-white/15 text-muted-foreground"
-                  title="添加标签"
-                >
-                  <Tag size={10} />
-                </button>
-              )}
-<div className="flex gap-0.5 ml-auto">
+            <button onClick={handleAddTag} className="px-2 py-1 rounded-full text-[11px] bg-amber-500 text-white leading-none h-full">✓</button>
+          </div>
+        ) : (
+          <div className="relative h-6">
+            <button onClick={() => setShowNewTag(true)} className="px-2 py-1 rounded-full text-[11px] bg-gray-100 text-gray-500 hover:bg-gray-200 leading-none h-full">+</button>
+            {/* 占位符，保持与带删除按钮的标签高度一致 */}
+            <div className="absolute -top-1 -right-1 w-4 h-4 opacity-0 pointer-events-none" />
+          </div>
+        )}
+      </div>
+
+      {/* 添加表单 */}
+      {isAdding && (
+        <div className="mb-3 bg-white rounded-xl p-3 shrink-0 border border-gray-200">
+          <textarea value={newContent} onChange={(e) => setNewContent(e.target.value)} placeholder="添加待办..." rows={2} autoFocus className="w-full bg-gray-50 rounded-lg px-2 py-1.5 text-sm resize-none border border-gray-200 focus:outline-none focus:ring-2 focus:ring-amber-300 mb-2" />
+          <div className="flex items-center gap-2 min-w-0">
+            <select value={newTag} onChange={(e) => setNewTag(e.target.value)} className="bg-white rounded-lg px-2 py-1.5 text-xs border border-gray-200 w-0 min-w-0 flex-shrink flex-grow max-w-[140px]">
+              <option value="">无标签</option>
+              {state.memoTags.filter(t => t !== "无标签").map((t) => <option key={t} value={t}>{t}</option>)}
+            </select>
+            <div className="flex items-center gap-2 flex-shrink-0">
+              <div className="flex gap-1">
                 {(["low", "medium", "high"] as const).map((p) => (
-                  <button
-                    key={p}
-                    onClick={() => setNewPriority(p)}
-                    className={`px-1.5 py-0.5 rounded text-[8px] font-medium transition-all
-                      ${newPriority === p ? PRIORITY_CONFIG[p].bg + " " + PRIORITY_CONFIG[p].color : "text-muted-foreground"}`}
-                  >
-                    {PRIORITY_CONFIG[p].label}
+                  <button key={p} onClick={() => setNewPriority(p)} className={`w-7 h-7 rounded-lg text-xs flex items-center justify-center transition-all border ${newPriority === p ? `${PRIORITY_CONFIG[p].bg} ${PRIORITY_CONFIG[p].color} ${PRIORITY_CONFIG[p].border}` : "bg-white text-gray-400 border-gray-200"}`}>
+                    {PRIORITY_CONFIG[p].icon}
                   </button>
                 ))}
               </div>
-
-              <button
-                onClick={handleAdd}
-                disabled={!newContent.trim()}
-                className="px-2.5 py-1 rounded-lg bg-primary/15 text-primary text-[10px]
-                           font-medium hover:bg-primary/25 transition-all disabled:opacity-30"
-              >
-                保存
-              </button>
+              <div className="flex gap-1">
+                <button onClick={() => setIsAdding(false)} className="px-3 py-1.5 rounded-lg text-xs text-gray-500 hover:bg-gray-200">取消</button>
+                <button onClick={handleAdd} disabled={!newContent.trim()} className="px-3 py-1.5 rounded-lg bg-amber-500 text-white text-xs font-medium disabled:opacity-40 whitespace-nowrap">保存</button>
+              </div>
             </div>
-          </motion.div>
-        ) : (
-          <button
-            onClick={() => setIsAdding(true)}
-            className="w-full flex items-center justify-center gap-1.5 py-2 mb-2 rounded-xl
-                       text-xs text-muted-foreground hover:bg-white/10 transition-all
-                       border border-dashed border-border/30"
-          >
-            <Plus size={12} />
-            记录灵感
-          </button>
-        )}
-      </AnimatePresence>
-<div className="flex-1 overflow-y-auto space-y-1.5 pr-0.5">
+          </div>
+        </div>
+      )}
+
+      {/* 待办列表 */}
+      <div className="flex-1 overflow-y-auto space-y-2 pr-1 min-h-0">
         {filteredMemos.length === 0 ? (
-          <div className="text-center py-4 text-muted-foreground/50">
-            <Lightbulb size={20} className="mx-auto mb-1.5 opacity-30" />
-            <p className="text-[10px]">专注时随手记录灵感和想法</p>
+          <div className="text-center py-8 text-gray-400">
+            <Lightbulb size={32} className="mx-auto mb-2 opacity-30" />
+            <p className="text-sm">{searchQuery ? "没有找到" : "记录你的待办"}</p>
           </div>
         ) : (
           filteredMemos.map((memo) => (
-            <motion.div
-              key={memo.id}
-              layout
-              initial={{ opacity: 0, x: -10 }}
-              animate={{ opacity: 1, x: 0 }}
-              className={`group bg-white/10 rounded-xl p-2.5 relative ${memo.done ? "opacity-50" : ""}`}
-            >
+            <div key={memo.id} className={`group relative bg-gray-50 rounded-xl p-3 transition-colors border-l-4 ${memo.done ? "opacity-50" : ""} ${memo.priority === "high" ? "border-l-red-400" : memo.priority === "medium" ? "border-l-amber-400" : "border-l-blue-400"}`}>
               <div className="flex items-start gap-2">
-                <button
-                  onClick={() => dispatch({ type: "UPDATE_MEMO", payload: { id: memo.id, done: !memo.done } })}
-                  className="shrink-0 mt-0.5"
-                >
+                <button onClick={() => dispatch({ type: "UPDATE_MEMO", payload: { id: memo.id, done: !memo.done } })} className="shrink-0 mt-0.5">
                   {memo.done ? (
-                    <div className="w-4 h-4 rounded-full bg-primary/20 flex items-center justify-center">
-                      <Check size={8} className="text-primary" />
-                    </div>
+                    <div className="w-5 h-5 rounded-full bg-green-500 flex items-center justify-center"><Check size={12} className="text-white" /></div>
                   ) : (
-                    <div className="w-4 h-4 rounded-full border border-border/50" />
+                    <div className="w-5 h-5 rounded-full border-2 border-gray-300 hover:border-amber-400 transition-colors" />
                   )}
                 </button>
                 <div className="flex-1 min-w-0">
-                  <p className={`text-[11px] leading-relaxed ${memo.done ? "line-through" : ""}`}>
-                    {memo.content}
-                  </p>
-                  <div className="flex items-center gap-1.5 mt-1">
-                    <span className="text-[8px] px-1.5 py-0.5 rounded bg-white/15 text-muted-foreground">
-                      {memo.tag}
-                    </span>
-                    {memo.priority === "high" && (
-                      <AlertCircle size={8} className="text-red-400" />
-                    )}
-                    <span className="text-[8px] text-muted-foreground/50 ml-auto">
-                      {new Date(memo.updatedAt).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })}
-                    </span>
-                  </div>
+                  {editingId === memo.id ? (
+                    <div className="bg-white rounded-xl p-3 border border-gray-200">
+                      <textarea value={editContent} onChange={(e) => setEditContent(e.target.value)} rows={2} autoFocus className="w-full bg-gray-50 rounded-lg px-2 py-1.5 text-sm resize-none border border-gray-200 focus:outline-none focus:ring-2 focus:ring-amber-300 mb-2" />
+                      <div className="flex items-center gap-2 min-w-0">
+                        <select value={editTag} onChange={(e) => setEditTag(e.target.value)} className="bg-white rounded-lg px-2 py-1.5 text-xs border border-gray-200 w-0 min-w-0 flex-shrink flex-grow max-w-[140px]">
+                          <option value="">无标签</option>
+                          {state.memoTags.filter(t => t !== "无标签").map((t) => <option key={t} value={t}>{t}</option>)}
+                        </select>
+                        <div className="flex items-center gap-2 flex-shrink-0">
+                          <div className="flex gap-1">
+                            {(["low", "medium", "high"] as const).map((p) => (
+                              <button key={p} onClick={() => setEditPriority(p)} className={`w-7 h-7 rounded-lg text-xs flex items-center justify-center transition-all border ${editPriority === p ? `${PRIORITY_CONFIG[p].bg} ${PRIORITY_CONFIG[p].color} ${PRIORITY_CONFIG[p].border}` : "bg-white text-gray-400 border-gray-200"}`}>
+                                {PRIORITY_CONFIG[p].icon}
+                              </button>
+                            ))}
+                          </div>
+                          <div className="flex gap-1">
+                            <button onClick={handleCancelEdit} className="px-3 py-1.5 rounded-lg text-xs text-gray-500 hover:bg-gray-200">取消</button>
+                            <button onClick={handleSaveEdit} className="px-3 py-1.5 rounded-lg bg-amber-500 text-white text-xs font-medium whitespace-nowrap">保存</button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      <p className={`text-sm leading-relaxed ${memo.done ? "line-through text-gray-400" : "text-gray-700"}`}>{memo.content}</p>
+                      <div className="flex items-center gap-2 mt-1.5">
+                        {memo.tag && (
+                          <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium flex items-center gap-1 ${PRIORITY_CONFIG[memo.priority].bg} ${PRIORITY_CONFIG[memo.priority].color}`}>
+                            {PRIORITY_CONFIG[memo.priority].icon} {memo.tag}
+                          </span>
+                        )}
+                        <span className="text-[10px] text-gray-400">{new Date(memo.updatedAt).toLocaleString("zh-CN", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }).replace(/\//g, "-")}</span>
+                      </div>
+                    </>
+                  )}
                 </div>
-                <button
-                  onClick={() => dispatch({ type: "DELETE_MEMO", payload: memo.id })}
-                  className="opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity
-                             text-destructive/50 hover:text-destructive shrink-0
-                             active:opacity-100 touch-manipulation p-1 rounded"
-                  aria-label="删除备忘"
-                >
-                  <Trash2 size={12} />
-                </button>
+                {editingId !== memo.id && (
+                  <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+                    <button onClick={() => handleStartEdit(memo)} className="p-1.5 rounded-lg text-gray-400 hover:text-amber-600 hover:bg-amber-50"><Edit2 size={14} /></button>
+                    {isConfirming(memo.id) ? (
+                      <div className="flex items-center gap-0.5">
+                        <span className="text-[10px] text-gray-500">确定？</span>
+                        <button onClick={confirmDelete} className="p-1 rounded text-red-500 hover:bg-red-50"><Trash2 size={12} /></button>
+                        <button onClick={cancelDelete} className="p-1 rounded text-gray-400 hover:bg-gray-100"><X size={12} /></button>
+                      </div>
+                    ) : (
+                      <button onClick={() => requestDelete(memo.id)} className="p-1.5 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50"><Trash2 size={14} /></button>
+                    )}
+                  </div>
+                )}
               </div>
-            </motion.div>
+            </div>
           ))
         )}
       </div>
-    </motion.div>
+    </div>
   );
 }

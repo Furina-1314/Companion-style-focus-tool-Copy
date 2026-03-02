@@ -1,17 +1,21 @@
 import { useState, lazy, Suspense } from "react";
-import { motion, AnimatePresence } from "motion/react";
+import { useGame } from "@/contexts/GameContext";
 import TimerPanel from "@/components/TimerPanel";
 import SoundPanel from "@/components/SoundPanel";
 import PlantInfo from "@/components/PlantInfo";
 import NotesPanel from "@/components/NotesPanel";
+import NotesTextPanel from "@/components/NotesTextPanel";
 import HabitsPanel from "@/components/HabitsPanel";
-import StatsPanel from "@/components/StatsPanel";
+
+import ProfilePage from "@/components/ProfilePage";
+import CalendarView from "@/components/CalendarView";
 import DialogBubble from "@/components/DialogBubble";
 import FloatingParticles from "@/components/FloatingParticles";
 import {
   FileText,
+  BookText,
   Target,
-  BarChart3,
+
   Leaf,
   ChevronLeft,
   ChevronRight,
@@ -19,285 +23,272 @@ import {
   Volume2,
   Sprout,
   X,
+  User,
+  Calendar,
 } from "lucide-react";
 
 const PlantScene = lazy(() => import("@/components/PlantScene"));
 
 const CLOUDS_BG = "/assets/clouds-bg.png";
-
 const HERO_BG = "/assets/hero-bg.png";
 
-type RightTab = "notes" | "habits" | "stats";
-type MobilePanel = "timer" | "sounds" | "plant" | "notes" | "habits" | "stats" | null;
+// 随机选择背景图（50%概率）
+const RANDOM_BG = Math.random() < 0.5 ? CLOUDS_BG : HERO_BG;
+const IS_CLOUDS = RANDOM_BG === CLOUDS_BG;
+
+type RightTab = "todos" | "notes" | "habits";
+type MobilePanel = "timer" | "sounds" | "plant" | "todos" | "notes" | "habits" | null;
+
+// 自定义背景组件
+function CustomBackground() {
+  const { state } = useGame();
+  if (!state.customBackground) return null;
+  return (
+    <div 
+      className="absolute inset-0 opacity-70" 
+      style={{ 
+        backgroundImage: `url(${state.customBackground})`, 
+        backgroundSize: "cover", 
+        backgroundPosition: "center" 
+      }} 
+    />
+  );
+}
 
 export default function Home() {
-  const [rightTab, setRightTab] = useState<RightTab>("notes");
+  const [rightTab, setRightTab] = useState<RightTab>("todos");
   const [leftCollapsed, setLeftCollapsed] = useState(false);
   const [rightCollapsed, setRightCollapsed] = useState(false);
   const [mobilePanel, setMobilePanel] = useState<MobilePanel>(null);
+  const [showProfile, setShowProfile] = useState(false);
+  const [showCalendar, setShowCalendar] = useState(false);
 
   const rightTabs: { id: RightTab; label: string; icon: typeof FileText }[] = [
-    { id: "notes", label: "笔记", icon: FileText },
+    { id: "todos", label: "待办", icon: FileText },
     { id: "habits", label: "习惯", icon: Target },
-    { id: "stats", label: "统计", icon: BarChart3 },
+    { id: "notes", label: "笔记", icon: BookText },
   ];
 
   const mobileTabs = [
     { id: "timer" as MobilePanel, label: "计时", icon: Timer },
     { id: "sounds" as MobilePanel, label: "音效", icon: Volume2 },
     { id: "plant" as MobilePanel, label: "植物", icon: Sprout },
-    { id: "notes" as MobilePanel, label: "笔记", icon: FileText },
+    { id: "todos" as MobilePanel, label: "待办", icon: FileText },
     { id: "habits" as MobilePanel, label: "习惯", icon: Target },
-    { id: "stats" as MobilePanel, label: "统计", icon: BarChart3 },
+    { id: "notes" as MobilePanel, label: "笔记", icon: BookText },
+
   ];
+
+  const renderRightContent = () => {
+    switch (rightTab) {
+      case "todos": return <NotesPanel />;
+      case "notes": return <NotesTextPanel />;
+      case "habits": return <HabitsPanel />;
+      default: return <NotesPanel />;
+    }
+  };
 
   return (
     <div className="fixed inset-0 overflow-hidden">
-<div className="absolute inset-0 z-0">
-        <div
-          className="absolute inset-0"
-          style={{
-            background: "linear-gradient(180deg, #d4f1f9 0%, #b8e6f0 30%, #a8d8ea 60%, #c5e8d5 100%)",
-          }}
+      {/* 背景层 */}
+      <div className="absolute inset-0 pointer-events-none">
+        {/* 渐变背景 */}
+        <div className="absolute inset-0 bg-gradient-to-b from-sky-100 via-sky-50 to-green-50" />
+        {/* 随机背景图（50%概率显示 clouds-bg 或 hero-bg）*/}
+        <div 
+          className="absolute inset-0 opacity-35" 
+          style={{ 
+            backgroundImage: `url(${RANDOM_BG})`, 
+            backgroundSize: "cover", 
+            backgroundPosition: IS_CLOUDS ? "center" : "center bottom",
+            maskImage: IS_CLOUDS ? undefined : "linear-gradient(to top, black 0%, transparent 60%)"
+          }} 
         />
-        <div
-          className="absolute inset-0 opacity-50"
-          style={{
-            backgroundImage: `url(${CLOUDS_BG})`,
-            backgroundSize: "cover",
-            backgroundPosition: "center",
-            animation: "cloudDrift 80s linear infinite",
-          }}
-        />
-        <div
-          className="absolute inset-0 opacity-25"
-          style={{
-            backgroundImage: `url(${HERO_BG})`,
-            backgroundSize: "cover",
-            backgroundPosition: "center bottom",
-            maskImage: "linear-gradient(to top, black 0%, transparent 50%)",
-            WebkitMaskImage: "linear-gradient(to top, black 0%, transparent 50%)",
-          }}
-        />
-        <div
-          className="absolute inset-0"
-          style={{
-            background: "radial-gradient(ellipse at 50% 35%, rgba(255,248,225,0.35) 0%, transparent 65%)",
-          }}
-        />
+        {/* 自定义背景（如果有）*/}
+        <CustomBackground />
       </div>
 
       <FloatingParticles />
-<div className="relative z-20 h-full hidden lg:flex">
-<AnimatePresence mode="wait">
-          {!leftCollapsed ? (
-            <motion.div
-              key="left-open"
-              initial={{ x: -300, opacity: 0 }}
-              animate={{ x: 0, opacity: 1 }}
-              exit={{ x: -300, opacity: 0 }}
-              transition={{ type: "spring", damping: 25, stiffness: 200 }}
-              className="w-[280px] shrink-0 p-4 flex flex-col gap-3 overflow-y-auto relative"
-            >
-<div className="flex items-center gap-2.5 px-1 py-1.5">
-                <div className="w-8 h-8 rounded-xl bg-primary/15 flex items-center justify-center shadow-sm">
-                  <Leaf size={16} className="text-primary" />
-                </div>
-                <div>
-                  <span
-                    className="text-sm font-bold block leading-tight"
-                    style={{ fontFamily: "var(--font-display)" }}
-                  >
-                    专注陪伴
-                  </span>
-                  <span className="text-[9px] text-muted-foreground">Focus Companion</span>
-                </div>
-              </div>
 
-              <TimerPanel />
+      {/* 顶部中间工具栏 */}
+      <div className="absolute top-4 left-1/2 -translate-x-1/2 z-40 flex gap-2">
+        <button onClick={() => setShowCalendar(true)} className="p-2.5 rounded-xl bg-white/80 shadow-lg hover:bg-white transition-colors text-gray-600" data-tooltip="日历" data-tooltip-pos="bottom">
+          <Calendar size={20} />
+        </button>
+        <button onClick={() => setShowProfile(true)} className="p-2.5 rounded-xl bg-white/80 shadow-lg hover:bg-white transition-colors text-gray-600" data-tooltip="个人中心" data-tooltip-pos="bottom">
+          <User size={20} />
+        </button>
+      </div>
+
+      {/* 桌面端布局 */}
+      <div className="relative z-10 h-full hidden lg:flex">
+        {/* 左侧面板 - 移除 Logo，空间留给音效 */}
+        <div className={`shrink-0 h-full flex flex-col transition-all duration-300 ${leftCollapsed ? "w-0 opacity-0" : "w-[300px] opacity-100"}`}>
+          <div className="h-full p-4 flex flex-col gap-3 overflow-hidden">
+            {/* 番茄钟 - 高度 360px，确保数字在圆圈内 */}
+            <div className="shrink-0">
+              <TimerPanel compact />
+            </div>
+            {/* 音效面板 - 占据剩余空间 */}
+            <div className="flex-1 min-h-0">
               <SoundPanel />
+            </div>
+          </div>
+        </div>
 
-              <button
-                onClick={() => setLeftCollapsed(true)}
-                className="absolute top-1/2 -right-3 w-6 h-14 rounded-r-xl glass 
-                           flex items-center justify-center hover:bg-white/50 transition-all z-30"
-              >
-                <ChevronLeft size={12} className="text-muted-foreground" />
-              </button>
-            </motion.div>
-          ) : (
-            <motion.button
-              key="left-closed"
-              initial={{ opacity: 0, x: -20 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -20 }}
-              onClick={() => setLeftCollapsed(false)}
-              className="absolute left-3 top-1/2 -translate-y-1/2 w-9 h-16 rounded-xl glass
-                         flex items-center justify-center hover:bg-white/50 transition-all z-30
-                         shadow-lg"
-            >
-              <ChevronRight size={14} className="text-muted-foreground" />
-            </motion.button>
-          )}
-        </AnimatePresence>
-<div className="flex-1 relative flex items-center justify-center">
-          <div className="w-full h-full max-w-xl max-h-[550px] relative">
-            <Suspense
-              fallback={
-                <div className="w-full h-full flex items-center justify-center">
-                  <div className="text-center">
-                    <Leaf size={36} className="mx-auto mb-3 text-primary/40 animate-pulse" />
-                    <p className="text-xs text-muted-foreground/60" style={{ fontFamily: "var(--font-display)" }}>
-                      正在加载温室...
-                    </p>
-                  </div>
-                </div>
-              }
-            >
+        {/* 左侧切换按钮 */}
+        <button 
+          onClick={() => setLeftCollapsed(!leftCollapsed)} 
+          className="absolute left-0 top-1/2 -translate-y-1/2 z-50 h-14 w-6 
+                     bg-gradient-to-r from-emerald-100/90 via-emerald-50/70 to-transparent
+                     hover:from-emerald-100 hover:via-emerald-50/90 hover:to-emerald-50/40
+                     shadow-lg shadow-emerald-900/10
+                     border-r border-emerald-200/60
+                     backdrop-blur-sm
+                     rounded-r-xl 
+                     flex items-center justify-center 
+                     transition-all duration-200 ease-out
+                     group"
+        >
+          <div className="relative">
+            <ChevronLeft 
+              size={20} 
+              strokeWidth={2.5}
+              className={`text-emerald-700 group-hover:text-emerald-600 transition-all duration-200 ${leftCollapsed ? 'opacity-0 rotate-180' : 'opacity-100'}`} 
+            />
+            <ChevronRight 
+              size={20} 
+              strokeWidth={2.5}
+              className={`absolute top-0 left-0 text-emerald-700 group-hover:text-emerald-600 transition-all duration-200 ${leftCollapsed ? 'opacity-100' : 'opacity-0 -rotate-180'}`} 
+            />
+          </div>
+        </button>
+
+        {/* 中间 */}
+        <div className="flex-1 relative flex items-center justify-center p-4">
+          <div className="w-full h-full max-w-2xl relative">
+            <Suspense fallback={<div className="w-full h-full flex items-center justify-center"><Leaf size={40} className="text-emerald-400 animate-pulse" /></div>}>
               <PlantScene />
             </Suspense>
             <DialogBubble />
           </div>
         </div>
-<AnimatePresence mode="wait">
-          {!rightCollapsed ? (
-            <motion.div
-              key="right-open"
-              initial={{ x: 300, opacity: 0 }}
-              animate={{ x: 0, opacity: 1 }}
-              exit={{ x: 300, opacity: 0 }}
-              transition={{ type: "spring", damping: 25, stiffness: 200 }}
-              className="w-[280px] shrink-0 p-4 flex flex-col gap-3 overflow-y-auto relative"
-            >
-              <PlantInfo />
-<div className="flex gap-0.5 glass rounded-xl p-1">
-                {rightTabs.map((tab) => (
-                  <button
-                    key={tab.id}
-                    onClick={() => setRightTab(tab.id)}
-                    className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg 
-                               text-[11px] font-medium transition-all duration-200
-                      ${rightTab === tab.id
-                        ? "bg-white/40 text-foreground shadow-sm"
-                        : "text-muted-foreground hover:text-foreground hover:bg-white/15"
-                      }`}
-                  >
-                    <tab.icon size={13} />
-                    {tab.label}
-                  </button>
-                ))}
-              </div>
 
-              <AnimatePresence mode="wait">
-                {rightTab === "notes" && <NotesPanel key="notes" />}
-                {rightTab === "habits" && <HabitsPanel key="habits" />}
-                {rightTab === "stats" && <StatsPanel key="stats" />}
-              </AnimatePresence>
-
-              <button
-                onClick={() => setRightCollapsed(true)}
-                className="absolute top-1/2 -left-3 w-6 h-14 rounded-l-xl glass 
-                           flex items-center justify-center hover:bg-white/50 transition-all z-30"
-              >
-                <ChevronRight size={12} className="text-muted-foreground" />
-              </button>
-            </motion.div>
-          ) : (
-            <motion.button
-              key="right-closed"
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: 20 }}
-              onClick={() => setRightCollapsed(false)}
-              className="absolute right-3 top-1/2 -translate-y-1/2 w-9 h-16 rounded-xl glass
-                         flex items-center justify-center hover:bg-white/50 transition-all z-30
-                         shadow-lg"
-            >
-              <ChevronLeft size={14} className="text-muted-foreground" />
-            </motion.button>
-          )}
-        </AnimatePresence>
-      </div>
-<div className="relative z-20 h-full flex flex-col lg:hidden">
-<div className="flex items-center gap-2 px-4 pt-3 pb-2">
-          <div className="w-7 h-7 rounded-lg bg-primary/15 flex items-center justify-center">
-            <Leaf size={14} className="text-primary" />
+        {/* 右侧切换按钮 */}
+        <button 
+          onClick={() => setRightCollapsed(!rightCollapsed)} 
+          className="absolute right-0 top-1/2 -translate-y-1/2 z-50 h-14 w-6 
+                     bg-gradient-to-l from-purple-100/90 via-purple-50/70 to-transparent
+                     hover:from-purple-100 hover:via-purple-50/90 hover:to-purple-50/40
+                     shadow-lg shadow-purple-900/10
+                     border-l border-purple-200/60
+                     backdrop-blur-sm
+                     rounded-l-xl 
+                     flex items-center justify-center 
+                     transition-all duration-200 ease-out
+                     group"
+        >
+          <div className="relative">
+            <ChevronRight 
+              size={20} 
+              strokeWidth={2.5}
+              className={`text-purple-700 group-hover:text-purple-600 transition-all duration-200 ${rightCollapsed ? 'opacity-0 -rotate-180' : 'opacity-100'}`} 
+            />
+            <ChevronLeft 
+              size={20} 
+              strokeWidth={2.5}
+              className={`absolute top-0 left-0 text-purple-700 group-hover:text-purple-600 transition-all duration-200 ${rightCollapsed ? 'opacity-100' : 'opacity-0 rotate-180'}`} 
+            />
           </div>
-          <span
-            className="text-sm font-bold"
-            style={{ fontFamily: "var(--font-display)" }}
-          >
-            专注陪伴
-          </span>
+        </button>
+
+        {/* 右侧面板 */}
+        <div className={`shrink-0 h-full transition-all duration-300 ${rightCollapsed ? "w-0 opacity-0" : "w-[380px] opacity-100"}`}>
+          <div className="h-full p-4 flex flex-col gap-4 overflow-hidden">
+            <div className="shrink-0">
+              <PlantInfo />
+            </div>
+            {/* 标签页添加图标 */}
+            <div className="flex gap-1 bg-white/50 rounded-xl p-1 shrink-0">
+              {rightTabs.map((tab) => (
+                <button key={tab.id} onClick={() => setRightTab(tab.id)} className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-lg text-xs font-medium transition-all ${rightTab === tab.id ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700 hover:bg-white/50"}`}>
+                  <tab.icon size={14} />
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+            <div className="flex-1 min-h-0 overflow-hidden">
+              {renderRightContent()}
+            </div>
+          </div>
         </div>
-<div className="flex-1 relative">
-          <Suspense
-            fallback={
-              <div className="w-full h-full flex items-center justify-center">
-                <Leaf size={32} className="text-primary/40 animate-pulse" />
-              </div>
-            }
-          >
-            <PlantScene />
-          </Suspense>
+      </div>
+
+      {/* 移动端布局 */}
+      <div className="relative z-10 h-full flex flex-col lg:hidden">
+        <div className="flex items-center gap-2 px-4 pt-3 pb-2 shrink-0">
+          <div className="w-8 h-8 rounded-lg bg-emerald-500 flex items-center justify-center">
+            <Leaf size={16} className="text-white" />
+          </div>
+          <span className="text-base font-bold">专注陪伴</span>
+          <div className="ml-auto flex gap-2">
+            <button onClick={() => setShowCalendar(true)} className="p-2 rounded-lg bg-white/80 text-gray-600">
+              <Calendar size={18} />
+            </button>
+            <button onClick={() => setShowProfile(true)} className="p-2 rounded-lg bg-white/80 text-gray-600">
+              <User size={18} />
+            </button>
+          </div>
+        </div>
+        
+        <div className="flex-1 relative min-h-0">
+          <div className="w-full h-full">
+            <Suspense fallback={<div className="w-full h-full flex items-center justify-center"><Leaf size={32} className="text-emerald-400 animate-pulse" /></div>}>
+              <PlantScene />
+            </Suspense>
+          </div>
           <DialogBubble />
         </div>
-<AnimatePresence>
-          {mobilePanel && (
-            <motion.div
-              initial={{ y: "100%" }}
-              animate={{ y: 0 }}
-              exit={{ y: "100%" }}
-              transition={{ type: "spring", damping: 25, stiffness: 300 }}
-              className="absolute bottom-14 left-0 right-0 z-30 max-h-[60vh] overflow-y-auto
-                         rounded-t-3xl glass-strong p-4 shadow-2xl"
-            >
-              <div className="flex items-center justify-between mb-3">
-                <div className="w-10 h-1 rounded-full bg-border/40 mx-auto" />
-                <button
-                  onClick={() => setMobilePanel(null)}
-                  className="absolute right-3 top-3 p-1.5 rounded-full hover:bg-white/20 
-                           transition-colors touch-manipulation"
-                  aria-label="关闭面板"
-                >
-                  <X size={16} className="text-muted-foreground" />
-                </button>
-              </div>
-              {mobilePanel === "timer" && <TimerPanel />}
-              {mobilePanel === "sounds" && <SoundPanel />}
-              {mobilePanel === "plant" && <PlantInfo />}
-              {mobilePanel === "notes" && <NotesPanel />}
-              {mobilePanel === "habits" && <HabitsPanel />}
-              {mobilePanel === "stats" && <StatsPanel />}
-            </motion.div>
-          )}
-        </AnimatePresence>
-<div className="shrink-0 glass-strong border-t border-white/20 px-2 py-1.5 flex items-center justify-around">
+
+        {mobilePanel && (
+          <div className="absolute inset-x-0 bottom-16 top-0 z-30 bg-white/95 backdrop-blur-xl p-4 overflow-y-auto">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-bold">
+                {mobilePanel === "timer" && "番茄钟"}
+                {mobilePanel === "sounds" && "环境音效"}
+                {mobilePanel === "plant" && "植物信息"}
+                {mobilePanel === "todos" && "待办"}
+                {mobilePanel === "notes" && "笔记"}
+                {mobilePanel === "habits" && "习惯"}
+                
+              </h2>
+              <button onClick={() => setMobilePanel(null)} className="p-2 rounded-full hover:bg-gray-100">
+                <X size={20} className="text-gray-500" />
+              </button>
+            </div>
+            {mobilePanel === "timer" && <TimerPanel />}
+            {mobilePanel === "sounds" && <SoundPanel />}
+            {mobilePanel === "plant" && <PlantInfo />}
+            {mobilePanel === "todos" && <NotesPanel />}
+            {mobilePanel === "notes" && <NotesTextPanel />}
+            {mobilePanel === "habits" && <HabitsPanel />}
+            
+          </div>
+        )}
+
+        <div className="shrink-0 bg-white/80 backdrop-blur-sm border-t border-gray-200 px-2 py-2 flex items-center justify-around">
           {mobileTabs.map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => setMobilePanel(mobilePanel === tab.id ? null : tab.id)}
-              className={`flex flex-col items-center gap-0.5 px-3 py-2 rounded-xl transition-all
-                active:scale-95 touch-manipulation min-w-[56px]
-                ${mobilePanel === tab.id
-                  ? "text-primary bg-primary/10"
-                  : "text-muted-foreground active:bg-white/10"
-                }`}
-              aria-label={tab.label}
-              aria-pressed={mobilePanel === tab.id}
-            >
-              <tab.icon size={18} />
-              <span className="text-[9px] font-medium">{tab.label}</span>
+            <button key={tab.id} onClick={() => setMobilePanel(mobilePanel === tab.id ? null : tab.id)} className={`flex flex-col items-center gap-0.5 px-3 py-2 rounded-xl transition-all ${mobilePanel === tab.id ? "text-emerald-600 bg-emerald-50" : "text-gray-500"}`}>
+              <tab.icon size={20} />
+              <span className="text-[10px] font-medium">{tab.label}</span>
             </button>
           ))}
         </div>
       </div>
-<style>{`
-        @keyframes cloudDrift {
-          0% { background-position: 0% 50%; }
-          100% { background-position: 200% 50%; }
-        }
-      `}</style>
+
+      {/* 弹窗 */}
+      {showProfile && <ProfilePage onClose={() => setShowProfile(false)} />}
+      {showCalendar && <CalendarView onClose={() => setShowCalendar(false)} />}
     </div>
   );
 }
