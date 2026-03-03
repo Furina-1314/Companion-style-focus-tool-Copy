@@ -1,4 +1,4 @@
-# Focus Companion（专注陪伴）
+# Companion-style-focus-tool
 
 一个本地优先的专注陪伴应用，包含番茄钟、环境音效、植物成长、笔记、习惯追踪和学习统计。前端使用 React + Vite，数据默认保存在浏览器 `localStorage`。
 
