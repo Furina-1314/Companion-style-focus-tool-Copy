@@ -347,27 +347,52 @@ export default function Home() {
       {/* 移动端布局 */}
       <div className="relative z-10 h-full flex flex-col lg:hidden">
 
-        <div className="flex-1 relative min-h-0">
+        <div
+          className="flex-1 relative min-h-0"
+          onDragOver={(e) => {
+            if (e.dataTransfer.types.includes("application/x-note-id")) {
+              e.preventDefault();
+              e.dataTransfer.dropEffect = "copy";
+            }
+          }}
+          onDrop={(e) => {
+            const noteId = e.dataTransfer.getData("application/x-note-id");
+            if (!noteId) return;
+            e.preventDefault();
+            const rect = (e.currentTarget as HTMLDivElement).getBoundingClientRect();
+            dispatch({ type: "ADD_STICKY_NOTE", payload: { noteId, x: e.clientX - rect.left, y: e.clientY - rect.top } });
+          }}
+        >
           <div className="w-full h-full">
             <Suspense fallback={<div className="w-full h-full flex items-center justify-center"><Leaf size={32} className="text-emerald-400 animate-pulse" /></div>}>
               <PlantScene />
             </Suspense>
           </div>
           <DialogBubble />
+          <StickyNotesOverlay
+            stickyNotes={state.stickyNotes}
+            noteMap={noteMap}
+            onMove={(id, x, y) => dispatch({ type: "MOVE_STICKY_NOTE", payload: { id, x, y } })}
+            onUpdate={(id, content) => dispatch({ type: "UPDATE_NOTE", payload: { id, content } })}
+            onClose={(id) => dispatch({ type: "CLOSE_STICKY_NOTE", payload: id })}
+            onColor={(id, color) => dispatch({ type: "SET_STICKY_NOTE_COLOR", payload: { id, color } })}
+          />
         </div>
 
         {mobilePanel && (
-          <div className="absolute inset-x-0 bottom-16 top-0 z-30 bg-white/95 backdrop-blur-xl p-4 overflow-y-auto">
+          <div className={`absolute inset-x-0 bottom-16 z-30 bg-white/95 backdrop-blur-xl p-4 overflow-y-auto ${mobilePanel === "notes" ? "top-[45%]" : "top-0"}`}>
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-bold">
-                {mobilePanel === "timer" && "番茄钟"}
-                {mobilePanel === "sounds" && "环境音效"}
-                {mobilePanel === "plant" && "植物信息"}
-                {mobilePanel === "todos" && "待办"}
-                {mobilePanel === "notes" && "笔记"}
-                {mobilePanel === "habits" && "习惯"}
-                
-              </h2>
+              <div>
+                <h2 className="text-lg font-bold">
+                  {mobilePanel === "timer" && "番茄钟"}
+                  {mobilePanel === "sounds" && "环境音效"}
+                  {mobilePanel === "plant" && "植物信息"}
+                  {mobilePanel === "todos" && "待办"}
+                  {mobilePanel === "notes" && "笔记"}
+                  {mobilePanel === "habits" && "习惯"}
+                </h2>
+                {mobilePanel === "notes" && <p className="text-xs text-gray-500 mt-1">将笔记拖到上方主界面即可生成便利贴</p>}
+              </div>
               <button onClick={() => setMobilePanel(null)} className="p-2 rounded-full hover:bg-gray-100">
                 <X size={20} className="text-gray-500" />
               </button>

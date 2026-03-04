@@ -167,6 +167,11 @@ export default function TimerPanel({ compact = false }: TimerPanelProps) {
   const strokeDashoffset = circumference * (1 - progress);
   const progressColor = mode === "focus" ? "#10b981" : "#f59e0b";
   const isSkipLocked = isRunning && state.skipButtonLocked;
+  const hasRoundStarted = state.timerMode !== "focus"
+    || state.isTimerRunning
+    || state.timeRemaining < state.pomodoroMinutes * 60
+    || state.cycleAccumulatedFocusSeconds > 0
+    || state.cycleAccumulatedPomodoros > 0;
 
   const totalFocusMinutesFromHistory = state.sessions.reduce((sum, s) => sum + s.duration, 0);
   const totalAffectionFromHistory = state.sessions.reduce((sum, s) => sum + Math.max(1, Math.floor(s.duration * 0.8)), 0);
@@ -267,7 +272,7 @@ export default function TimerPanel({ compact = false }: TimerPanelProps) {
             <Square size={18} className={isSkipLocked ? "text-gray-300 fill-gray-300" : "text-red-600 fill-red-600"} />
           </button>
         ) : (
-          mode === "focus" && (
+          mode === "focus" && !hasRoundStarted && (
             <button onClick={() => setShowSettings(true)} className="w-12 h-12 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center transition-colors" title="设置">
               <Settings size={20} className="text-gray-600" />
             </button>

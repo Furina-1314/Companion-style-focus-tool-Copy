@@ -399,6 +399,7 @@ type GameAction =
   | { type: "ADD_HABIT"; payload: { name: string } }
   | { type: "TOGGLE_HABIT"; payload: string }
   | { type: "DELETE_HABIT"; payload: string }
+  | { type: "UPDATE_HABIT"; payload: { id: string; name: string } }
   | { type: "SET_DIARY_ENTRY"; payload: { date: string; content: string } }
   | { type: "SET_ACTIVE_PANEL"; payload: string | null }
   | { type: "SET_CUSTOM_BACKGROUND"; payload: string | null }
@@ -721,6 +722,14 @@ function gameReducer(state: GameState, action: GameAction): GameState {
 
     case "DELETE_HABIT":
       return { ...state, habits: state.habits.filter((h) => h.id !== action.payload) };
+
+    case "UPDATE_HABIT":
+      return {
+        ...state,
+        habits: state.habits.map((h) =>
+          h.id === action.payload.id ? { ...h, name: action.payload.name.trim() || h.name } : h
+        ),
+      };
 
     case "ADD_NOTE": {
       const now = new Date().toISOString();
