@@ -174,12 +174,12 @@ export default function HabitsPanel() {
 
       {/* 历史记录表格 */}
       {showHistory && state.habits.length > 0 && (
-        <div className="mb-3 bg-gray-50 rounded-xl p-3 overflow-x-auto shrink-0">
+        <div className="mb-3 bg-gray-50 rounded-xl p-3 overflow-x-auto overflow-y-auto max-h-50.5 shrink-0">
           <div className="flex items-center justify-between mb-2">
             <span className="text-xs font-medium text-gray-600">近 7 天完成情况</span>
             <button onClick={() => setShowHistory(false)} className="text-gray-400 hover:text-gray-600"><ChevronUp size={16} /></button>
           </div>
-          <table className="w-full text-xs">
+          <table className="w-full text-xs overflow-y-auto">
             <thead>
               <tr>
                 <th className="text-left py-1 text-gray-500 font-medium">习惯</th>
@@ -192,7 +192,7 @@ export default function HabitsPanel() {
                 <th className="text-center py-1 text-gray-500 font-medium w-10">🔥</th>
               </tr>
             </thead>
-            <tbody>
+            <tbody className="overflow-y-auto">
               {state.habits.map((habit) => (
                 <tr key={habit.id} className="border-t border-gray-200">
                   <td className="py-1.5 pr-2 truncate max-w-[80px]" data-tooltip={habit.name}>{habit.name}</td>
@@ -280,7 +280,7 @@ export default function HabitsPanel() {
                   </button>
                 </div>
               )}
-                            {habit.streak > 0 && (
+              {habit.streak > 0 && (
                 <span className={`flex items-center gap-0.5 text-xs font-medium shrink-0 ${habit.streak >= 7 ? "text-orange-500" : "text-amber-500"}`}>
                   <Flame size={14} className={habit.streak >= 7 ? "fill-orange-500" : "fill-amber-500"} />
                   {habit.streak}
