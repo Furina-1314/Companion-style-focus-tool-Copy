@@ -436,8 +436,8 @@ export default function ProfilePage({ onClose }: ProfilePageProps) {
             <div className="bg-gray-50 rounded-2xl p-4">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                  <div className={`p-2 rounded-xl ${state.skipButtonLocked ? 'bg-gray-200' : 'bg-emerald-100'}`}>
-                    {state.skipButtonLocked ? <Lock size={18} className="text-gray-600" /> : <Unlock size={18} className="text-emerald-600" />}
+                  <div className={`p-2 rounded-xl ${state.skipButtonLocked ? 'bg-red-100' : 'bg-emerald-100'}`}>
+                    {state.skipButtonLocked ? <Lock size={18} className="text-red-600" /> : <Unlock size={18} className="text-emerald-600" />}
                   </div>
                   <div>
                     <div className="font-medium text-gray-800">跳过按钮</div>
@@ -450,7 +450,7 @@ export default function ProfilePage({ onClose }: ProfilePageProps) {
                   onClick={() => dispatch({ type: "TOGGLE_SKIP_BUTTON_LOCK" })}
                   className={`px-4 py-2 rounded-xl font-medium text-sm transition-colors ${
                     state.skipButtonLocked
-                      ? "bg-gray-200 text-gray-700 hover:bg-gray-300"
+                      ? "bg-red-100 text-red-700 hover:bg-red-200"
                       : "bg-emerald-100 text-emerald-700 hover:bg-emerald-200"
                   }`}
                 >
