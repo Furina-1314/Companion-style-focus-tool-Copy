@@ -166,7 +166,12 @@ export default function ProfilePage({ onClose }: ProfilePageProps) {
   // 统计数据计算
   const weekData = useMemo(() => {
     const days: { label: string; minutes: number; sessions: number }[] = [];
-    for (let i = 6; i >= 0; i--) {
+    const today = new Date();
+    const dayOfWeek = today.getDay(); // 0 = 周日, 1 = 周一, ..., 6 = 周六
+    // 计算距离这周周日的天数（周日作为第一天）
+    const daysToSunday = dayOfWeek === 0 ? 0 : dayOfWeek;
+    
+    for (let i = daysToSunday; i > daysToSunday - 7; i--) {
       const date = new Date();
       date.setDate(date.getDate() - i);
       const dateStr = date.toDateString();

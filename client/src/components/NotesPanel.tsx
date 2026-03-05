@@ -283,7 +283,7 @@ export default function NotesPanel() {
                             {PRIORITY_CONFIG[memo.priority].icon} {memo.tag}
                           </span>
                         )}
-                        <span className="text-[10px] text-gray-400">{new Date(memo.updatedAt).toLocaleString("zh-CN", { year: "numeric", month: "2-digit", day: "2-digit"/*, hour: "2-digit", minute: "2-digit"*/ }).replace(/\//g, "-")}</span>
+                        <span className="text-[10px] text-gray-400">创建于 {new Date(memo.createdAt).toLocaleString("zh-CN", { year: "numeric", month: "2-digit", day: "2-digit"/*, hour: "2-digit", minute: "2-digit"*/ }).replace(/\//g, "-")}</span>
                       </div>
                     </>
                   )}
