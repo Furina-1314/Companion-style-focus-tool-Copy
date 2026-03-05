@@ -1,5 +1,6 @@
 import { usePomodoro } from "@/hooks/usePomodoro";
 import { useGame, FocusSession } from "@/contexts/GameContext";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Play, Pause, FastForward, Settings, X, History, ChevronDown, ChevronUp, Heart, Square } from "lucide-react";
 import { useState, useEffect, useCallback, useRef } from "react";
 
@@ -246,14 +247,20 @@ export default function TimerPanel({ compact = false }: TimerPanelProps) {
 
       <div className="flex items-center justify-center gap-4 shrink-0 mt-2">
         {hasRoundStarted ? (
-          <button
-          onClick={handleQuickAction}
-          disabled={isSkipLocked}
-          className={`w-12 h-12 rounded-full flex items-center justify-center transition-colors ${isSkipLocked ? "bg-gray-100 text-gray-300 cursor-not-allowed" : "bg-gray-100 hover:bg-gray-200"}`}
-          title={isSkipLocked ? "已锁定跳过/结束" : mode === "focus" ? "快进当前番茄" : "结束休息"}
-          >
-            <FastForward size={20} className={isSkipLocked ? "text-gray-300" : "text-gray-600"} />
-          </button>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                onClick={handleQuickAction}
+                disabled={isSkipLocked}
+                className={`w-12 h-12 rounded-full flex items-center justify-center transition-colors ${isSkipLocked ? "bg-gray-100 text-gray-300 cursor-not-allowed" : "bg-gray-100 hover:bg-gray-200"}`}
+              >
+                <FastForward size={20} className={isSkipLocked ? "text-gray-300" : "text-gray-600"} />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="top" sideOffset={8}>
+              {isSkipLocked ? "跳过键已锁定" : mode === "focus" ? "快进当前番茄" : "结束休息"}
+            </TooltipContent>
+          </Tooltip>
         ) : null}
         
         <button onClick={isRunning ? pause : start} className={`relative z-30 w-20 h-20 rounded-full flex items-center justify-center shadow-lg transition-all active:scale-95 ${isRunning ? "bg-amber-400 hover:bg-amber-500 text-white" : mode === "focus" ? "bg-emerald-500 hover:bg-emerald-600 text-white" : "bg-amber-500 hover:bg-amber-600 text-white"}`}>
@@ -261,18 +268,29 @@ export default function TimerPanel({ compact = false }: TimerPanelProps) {
         </button>
 
         {hasRoundStarted ? (
-          <button
-            onClick={endRound}
-            disabled={isSkipLocked}
-            className={`w-12 h-12 rounded-full flex items-center justify-center transition-colors ${isSkipLocked ? "bg-gray-100 cursor-not-allowed" : "bg-red-100 hover:bg-red-200"}`}
-            title={isSkipLocked ? "已锁定结束" : "结束本局并结算"}
-          >
-            <Square size={18} className={isSkipLocked ? "text-gray-300 fill-gray-300" : "text-red-600 fill-red-600"} />
-          </button>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                onClick={endRound}
+                disabled={isSkipLocked}
+                className={`w-12 h-12 rounded-full flex items-center justify-center transition-colors ${isSkipLocked ? "bg-gray-100 cursor-not-allowed" : "bg-red-100 hover:bg-red-200"}`}
+              >
+                <Square size={18} className={isSkipLocked ? "text-gray-300 fill-gray-300" : "text-red-600 fill-red-600"} />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="top" sideOffset={8}>
+              {isSkipLocked ? "结束键已锁定" : "结束本局并结算"}
+            </TooltipContent>
+          </Tooltip>
         ) : (
-          <button onClick={() => setShowSettings(true)} className="w-12 h-12 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center transition-colors" title="设置">
-            <Settings size={20} className="text-gray-600" />
-          </button>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button onClick={() => setShowSettings(true)} className="w-12 h-12 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center transition-colors">
+                <Settings size={20} className="text-gray-600" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="top" sideOffset={8}>设置</TooltipContent>
+          </Tooltip>
         )}
       </div>
     </div>
