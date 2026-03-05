@@ -44,9 +44,9 @@ export interface StickyNote {
 export interface HabitEntry {
   id: string;
   name: string;
-  completed: boolean;
   streak: number;
-  lastCompleted: string | null;
+  accumulate: number;
+  completedDates: string[];
 }
 
 export interface FocusSession {
@@ -470,6 +470,24 @@ function getDateStr(date: Date = new Date()): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
 
+function calculateHabitStats(completedDates: string[], fromDate: Date = new Date()) {
+  const uniqueDates = Array.from(new Set(completedDates)).sort();
+  const dateSet = new Set(uniqueDates);
+  let streak = 0;
+
+  const cursor = new Date(fromDate);
+  while (dateSet.has(getDateStr(cursor))) {
+    streak += 1;
+    cursor.setDate(cursor.getDate() - 1);
+  }
+
+  return {
+    streak,
+    accumulate: uniqueDates.length,
+    completedDates: uniqueDates,
+  };
+}
+
 // ============ Reducer ============
 function gameReducer(state: GameState, action: GameAction): GameState {
   switch (action.type) {
@@ -691,31 +709,28 @@ function gameReducer(state: GameState, action: GameAction): GameState {
         ...state,
         habits: [
           ...state.habits,
-          { id: Date.now().toString(), name: action.payload.name, completed: false, streak: 0, lastCompleted: null },
+          { id: Date.now().toString(), name: action.payload.name, streak: 0, accumulate: 0, completedDates: [] },
         ],
       };
 
     case "TOGGLE_HABIT": {
-      const today = new Date().toDateString();
+      const today = getDateStr();
       return {
         ...state,
         habits: state.habits.map((h) => {
           if (h.id !== action.payload) return h;
-          if (h.completed) {
-            // 取消勾选：重置 streak（减1，最小为0），清空最后完成时间
-            return { 
-              ...h, 
-              completed: false, 
-              streak: Math.max(0, h.streak - 1),
-              lastCompleted: null 
-            };
-          }
-          const isConsecutive = h.lastCompleted === new Date(Date.now() - 86400000).toDateString();
+
+          const isCompletedToday = h.completedDates.includes(today);
+          const nextCompletedDates = isCompletedToday
+            ? h.completedDates.filter((d) => d !== today)
+            : [...h.completedDates, today];
+          const stats = calculateHabitStats(nextCompletedDates);
+
           return {
             ...h,
-            completed: true,
-            streak: isConsecutive ? h.streak + 1 : 1,
-            lastCompleted: today,
+            streak: stats.streak,
+            accumulate: stats.accumulate,
+            completedDates: stats.completedDates,
           };
         }),
       };
@@ -1193,30 +1208,6 @@ export function GameProvider({ children }: { children: ReactNode }) {
       console.warn("Failed to save music progress:", e);
     }
   }, [state.musicProgress, state.musicCurrentTime]);
-
-  // Reset habits daily - 使用 ref 防止重复执行
-  const hasResetTodayRef = useRef(false);
-  
-  useEffect(() => {
-    if (hasResetTodayRef.current) return;
-    
-    const today = new Date().toDateString();
-    const lastCheck = localStorage.getItem("focus-companion-last-habit-check");
-    
-    if (lastCheck !== today) {
-      localStorage.setItem("focus-companion-last-habit-check", today);
-      hasResetTodayRef.current = true;
-      
-      // 重置所有非今日完成的 habit
-      state.habits.forEach((h) => {
-        if (h.completed && h.lastCompleted !== today) {
-          dispatch({ type: "TOGGLE_HABIT", payload: h.id });
-        }
-      });
-    } else {
-      hasResetTodayRef.current = true;
-    }
-  }, []); // 只在组件挂载时执行一次
 
   const currentPlantStage = [...PLANT_STAGES].reverse().find((s) => state.affection >= s.minAffection) || PLANT_STAGES[0];
   const currentIndex = PLANT_STAGES.indexOf(currentPlantStage);
