@@ -190,7 +190,7 @@ export default function TimerPanel({ compact = false }: TimerPanelProps) {
           <button onClick={() => setShowSettings(false)} className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors"><X size={16} className="text-gray-500" /></button>
         </div>
 
-        <div className="flex-1 overflow-y-auto pr-1 space-y-3 min-h-0">
+        <div className="flex-1 overflow-y-auto pr-1 pl-0.5 space-y-3 min-h-0">
           <div>
             <div className="flex items-center justify-between mb-1.5"><span className="text-xs text-gray-600">专注时长</span><span className="text-xs font-bold text-emerald-600">{state.pomodoroMinutes} 分钟</span></div>
             <input type="number" min="1" max="180" value={customPomodoro} onChange={(e) => setCustomPomodoro(e.target.value)} placeholder="自定义分钟" className="w-full px-2.5 py-1 rounded-lg bg-gray-100 text-xs placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-emerald-300" />
