@@ -1,4 +1,4 @@
-# 专注陪伴工具（Companion-style Focus Tool）
+# 汐得时雨 - Seed: TideRain
 
 一个本地优先的沉浸式专注应用，围绕「专注 → 休息 → 复盘」流程提供番茄钟、环境音、植物成长、习惯追踪、笔记和统计能力。
 
@@ -8,7 +8,7 @@
 
 ## 目录
 
-- [专注陪伴工具（Companion-style Focus Tool）](#专注陪伴工具companion-style-focus-tool)
+- [汐得时雨 - Seed: TideRain](#汐得时雨 - Seed: TideRain)
   - [目录](#目录)
   - [核心功能](#核心功能)
   - [快速安装](#快速安装)

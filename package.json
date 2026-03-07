@@ -1,5 +1,5 @@
 {
-  "name": "focus-companion",
+  "name": "seed-tiderain",
   "version": "1.0.0",
   "type": "module",
   "main": "electron/main.mjs",
@@ -22,8 +22,8 @@
     "local:preview": "pnpm install && pnpm build && pnpm start"
   },
   "build": {
-    "appId": "com.furina.focuscompanion",
-    "productName": "Focus Companion",
+    "appId": "com.furina.seedcompanion",
+    "productName": "Seed: TideRain",
     "directories": {
       "output": "release"
     },
