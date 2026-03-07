@@ -71,7 +71,7 @@ function HistoryModal({ sessions, totalMinutes, totalAffection, onClose }: {
           <div className="space-y-1">
             {recentSessions.map((s, i) => {
               const isExpanded = expandedId === s.id;
-              const affectionGain = Math.max(1, Math.floor(s.duration * 0.8));
+              const affectionGain = Math.floor(s.duration * 0.8); //好感增益计算方式与GameContext中一致，避免历史记录中好感增益重复计算导致的误差
               return (
                 <div key={s.id} className={`rounded-lg transition-all ${isExpanded ? "bg-purple-50 ring-1 ring-purple-200" : "bg-gray-50 hover:bg-gray-100"}`}>
                   <button onClick={() => setExpandedId(isExpanded ? null : s.id)} className="w-full flex items-center justify-between py-1.5 px-2">
