@@ -8,7 +8,7 @@
 
 ## 目录
 
-- [汐得时雨 - Seed: TideRain](#汐得时雨 - Seed: TideRain)
+- [汐得时雨 - Seed: TideRain](#汐得时雨---seed-tiderain)
   - [目录](#目录)
   - [核心功能](#核心功能)
   - [快速安装](#快速安装)
