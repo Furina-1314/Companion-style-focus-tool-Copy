@@ -44,13 +44,14 @@ export default function ProfilePage({ onClose }: ProfilePageProps) {
 
   const clearAllData = () => {
     if (!confirm("⚠️ 警告：此操作将清空所有数据！\n\n点击确定继续")) {
+      alert("操作已取消");
       return;
     }
     if (!confirm("二次确认：你真的确定要清空所有数据吗？")) {
+      alert("操作已取消");
       return;
     }
-    const confirmText = prompt("最终确认：请输入 DELETE 以清空所有数据：");
-    if (confirmText !== "DELETE") {
+    if (!confirm("最终确认：你真的确定要清空所有数据吗？")) {
       alert("操作已取消");
       return;
     }

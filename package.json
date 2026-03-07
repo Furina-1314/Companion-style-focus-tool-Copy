@@ -1,5 +1,5 @@
 {
-  "name": "focus-companion-static",
+  "name": "focus-companion",
   "version": "1.0.0",
   "type": "module",
   "main": "electron/main.mjs",
