@@ -10,6 +10,11 @@ export default function ProfilePage({ onClose }: ProfilePageProps) {
   const { state, dispatch } = useGame();
   const bgInputRef = useRef<HTMLInputElement>(null);
 
+  const today = new Date();
+  const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+
+  const isCompletedToday = (habit: typeof state.habits[0]) => habit.completedDates.includes(todayStr);
+
   const exportData = () => {
     const data = {
       exportDate: new Date().toISOString(),
@@ -424,7 +429,7 @@ export default function ProfilePage({ onClose }: ProfilePageProps) {
               {state.habits.length === 0 ? <p className="text-sm text-gray-400">还没有添加习惯</p> : state.habits.map((habit) => (
                 <div key={habit.id} className="flex items-center justify-between py-2 border-b border-gray-100 last:border-0">
                   <span className="text-sm text-gray-700">{habit.name}</span>
-                  <div className="text-xs text-gray-500">连续 {habit.streak} 天 · 累计 {habit.accumulate} 天</div>
+                  <div className="text-xs text-gray-500">连续 {isCompletedToday(habit) ? habit.streak : 0} 天 · 累计 {habit.accumulate} 天</div>
                 </div>
               ))}
             </div>
